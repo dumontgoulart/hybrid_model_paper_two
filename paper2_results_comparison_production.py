@@ -26,11 +26,17 @@ mpl.rcParams['figure.dpi'] = 144
 mpl.rcParams.update({'font.size': 14})
 
 # LOAD FUNCTIONS
-def weighted_conversion(DS, DS_area, name_ds = 'Yield'):
+def weighted_prod_conversion(DS, DS_area, name_ds = 'Yield', mode = 'production'):
+    if mode == 'yield':
+        dividing_factor = DS_area['harvest_area'].where(DS > -10).sum(['lat','lon'])
+    elif mode == 'production':
+        dividing_factor = 10**6
+    
     if type(DS) == xr.core.dataarray.DataArray:
-        DS_weighted = ((DS * DS_area['harvest_area'].where(DS > -10) ) / DS_area['harvest_area'].where(DS > -10).sum(['lat','lon'])).to_dataset(name = name_ds)
+        DS_weighted = ((DS * DS_area['harvest_area'].where(DS > -10) ) / dividing_factor ).to_dataset(name = name_ds)
     elif type(DS) == xr.core.dataarray.Dataset:
-        DS_weighted = ((DS * DS_area['harvest_area'].where(DS > -10) / DS_area['harvest_area'].where(DS > -10).sum(['lat','lon'])))
+        DS_weighted = (DS * DS_area['harvest_area'].where(DS > -10) / dividing_factor )
+        
     return DS_weighted.sum(['lat','lon'])
 
 def rearrange_latlot(DS, resolution = 0.5):
@@ -53,6 +59,7 @@ for country in shpreader.Reader(countries).records():
         usa_border0 = country.geometry
         
 # Plots for spatial distribution of anomalies
+# Plots for spatial distribution of anomalies
 def plot_2d_am_map(dataarray_2d, title = None, colormap = None, vmin = None, vmax = None, save_fig = None):
     # Plot 2D map of DataArray, remember to average along time or select one temporal interval
     plt.figure(figsize=(12,10)) #plot clusters
@@ -71,7 +78,7 @@ def plot_2d_am_map(dataarray_2d, title = None, colormap = None, vmin = None, vma
         plt.title(title)
     if save_fig is not None:
         plt.tight_layout()
-        plt.savefig(f'paper_figures/{save_fig}.png', format='png', dpi=500)
+        plt.savefig(f'paper_figures/{save_fig}.png', format='png', dpi=300)
 
     plt.show()
 
@@ -144,15 +151,14 @@ print(f'Mean:{round(DS_hybrid_ipsl_85.to_dataframe().mean().values.item(),2)} an
 print(f'Mean:{round(DS_hybrid_ukesm_85.to_dataframe().mean().values.item(),2)} and Std: {round(DS_hybrid_ukesm_85.to_dataframe().std().values.item(),2)}')
 
 #%% WIEGHTED ANALYSIS
-# =============================================================================
 
 ### Use MIRCA to isolate the rainfed 90% soybeans
 # DS_mirca = xr.open_dataset("../../paper_hybrid_agri/data/americas_mask_ha.nc", decode_times=False).rename({'latitude': 'lat', 'longitude': 'lon','annual_area_harvested_rfc_crop08_ha_30mn':'harvest_area'})
 DS_mirca = xr.open_dataset("../../paper_hybrid_agri/data/soy_harvest_spam_native_05x05.nc", decode_times=False)
 
 #### HARVEST DATA
-DS_harvest_area_sim = xr.load_dataset("../../paper_hybrid_agri/data/soybean_harvest_area_calculated_americas_hg.nc", decode_times=False)
-DS_harvest_area_sim = DS_harvest_area_sim.sel(time = 2012) #.mean('time') 
+DS_harvest_area_sim = xr.load_dataset("../../paper_hybrid_agri/data/soybean_harvest_area_calculated_americas_hg.nc", decode_times=False).sel(time = slice(1980,2015))
+DS_harvest_area_sim = DS_harvest_area_sim.sel(time = 2012) 
 DS_harvest_area_sim = DS_harvest_area_sim.where(DS_mirca['harvest_area'] > 0 )
 
 # Historical, change with year
@@ -160,7 +166,7 @@ DS_harvest_area_hist = DS_harvest_area_sim.where(DS_historical_hybrid['Yield']> 
 DS_harvest_area_hist = rearrange_latlot(DS_harvest_area_hist)
 
 # Future, it works as the constant area throught the 21st century based on 2014/15/16
-DS_harvest_area_fut = DS_harvest_area_fut = DS_harvest_area_hist.sel(time = 2012) #.sel(time=slice(2014,2016)).mean(['time'])
+DS_harvest_area_fut = DS_harvest_area_hist.sel(time = 2012) #.sel(time=slice(2014,2016)).mean(['time'])
 DS_harvest_area_fut = rearrange_latlot(DS_harvest_area_fut)
 
 # Test plots to check for problems
@@ -169,15 +175,15 @@ plot_2d_am_map(DS_harvest_area_hist['harvest_area'].sel(time = 2012))
 plot_2d_am_map(DS_harvest_area_fut['harvest_area'], title = 'Future projections')
 
 # Weighted comparison for each model - degree of explanation
-DS_historical_hybrid_weighted = weighted_conversion(DS_historical_hybrid['Yield'], DS_area = DS_harvest_area_hist)
+DS_historical_hybrid_weighted = weighted_prod_conversion(DS_historical_hybrid['Yield'], DS_area = DS_harvest_area_hist)
 
 # Future projections and transform into weighted timeseries
-DS_hybrid_gfdl_26_weighted = weighted_conversion(DS_hybrid_gfdl_26['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
-DS_hybrid_gfdl_85_weighted = weighted_conversion(DS_hybrid_gfdl_85['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
-DS_hybrid_ipsl_26_weighted = weighted_conversion(DS_hybrid_ipsl_26['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
-DS_hybrid_ipsl_85_weighted = weighted_conversion(DS_hybrid_ipsl_85['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
-DS_hybrid_ukesm_26_weighted = weighted_conversion(DS_hybrid_ukesm_26['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
-DS_hybrid_ukesm_85_weighted = weighted_conversion(DS_hybrid_ukesm_85['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
+DS_hybrid_gfdl_26_weighted = weighted_prod_conversion(DS_hybrid_gfdl_26['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
+DS_hybrid_gfdl_85_weighted = weighted_prod_conversion(DS_hybrid_gfdl_85['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
+DS_hybrid_ipsl_26_weighted = weighted_prod_conversion(DS_hybrid_ipsl_26['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
+DS_hybrid_ipsl_85_weighted = weighted_prod_conversion(DS_hybrid_ipsl_85['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
+DS_hybrid_ukesm_26_weighted = weighted_prod_conversion(DS_hybrid_ukesm_26['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
+DS_hybrid_ukesm_85_weighted = weighted_prod_conversion(DS_hybrid_ukesm_85['yield-soy-noirr'], DS_area = DS_harvest_area_fut)
 
 DS_historical_hybrid_weighted['Yield'].plot(label = 'history')
 DS_hybrid_ukesm_85_weighted['Yield'].plot(label = 'UKESM1-0-ll_5-8.5')
@@ -208,18 +214,18 @@ plt.legend()
 plt.show()
 
 # put the scenarios all together
-DS_hybrid_all_weighted = weighted_conversion(DS_hybrid_all, DS_area = DS_harvest_area_fut)
+DS_hybrid_all_weighted = weighted_prod_conversion(DS_hybrid_all, DS_area = DS_harvest_area_fut)
 df_hybrid_weighted_melt = pd.melt(DS_hybrid_all_weighted.to_dataframe(),ignore_index= False )
-df_hybrid_weighted_melt_counterfactuals = df_hybrid_weighted_melt.where(df_hybrid_weighted_melt['value'] <= DS_historical_hybrid_weighted['Yield'].sel(time=2012).values )
+df_hybrid_weighted_melt_counterfactuals = df_hybrid_weighted_melt.where(df_hybrid_weighted_melt['value'] <= DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values )
 
 df_hybrid_weighted_melt_counterfactuals_split = df_hybrid_weighted_melt_counterfactuals[df_hybrid_weighted_melt_counterfactuals['value'] > - 10].copy()
 df_hybrid_weighted_melt_counterfactuals_split['SSP'] = df_hybrid_weighted_melt_counterfactuals_split.variable.str.split('_').str[-1]
 
 
 # put the scenarios all together
-DS_hybrid_trend_all_weighted = weighted_conversion(DS_hybrid_trend_all, DS_area = DS_harvest_area_fut)
+DS_hybrid_trend_all_weighted = weighted_prod_conversion(DS_hybrid_trend_all, DS_area = DS_harvest_area_fut)
 df_hybrid_trend_weighted_melt = pd.melt(DS_hybrid_trend_all_weighted.to_dataframe(),ignore_index= False )
-df_hybrid_trend_weighted_melt_counterfactuals = df_hybrid_trend_weighted_melt.where(df_hybrid_trend_weighted_melt['value'] <= DS_historical_hybrid_weighted['Yield'].sel(time=2012).values )
+df_hybrid_trend_weighted_melt_counterfactuals = df_hybrid_trend_weighted_melt.where(df_hybrid_trend_weighted_melt['value'] <= DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values )
 
 df_hybrid_trend_weighted_melt_counterfactuals_split = df_hybrid_trend_weighted_melt_counterfactuals[df_hybrid_trend_weighted_melt_counterfactuals['value'] > - 10].copy()
 df_hybrid_trend_weighted_melt_counterfactuals_split['SSP'] = df_hybrid_trend_weighted_melt_counterfactuals_split.variable.str.split('_').str[-1]
@@ -229,41 +235,48 @@ print("Number of impact analogues:", (df_hybrid_weighted_melt_counterfactuals['v
 
 years_counterfactuals = df_hybrid_weighted_melt_counterfactuals[df_hybrid_weighted_melt_counterfactuals['value'] > -10]
 
-plt.figure(figsize=(8,5), dpi=300) #plot clusters
-plt.axhline(y = DS_historical_hybrid_weighted['Yield'].sel(time=2012).values)
-sns.scatterplot(data = df_hybrid_weighted_melt_counterfactuals, 
-                x = df_hybrid_weighted_melt_counterfactuals.index, y='value', hue = 'variable')
-
 
 #%% Figure 2 - timeseries with factual baseline
 # =============================================================================
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8), sharex=True, sharey=True)
-ax1.axhline(y = DS_historical_hybrid_weighted['Yield'].sel(time=2012).values, linestyle = 'dashed', label = '2012 event', linewidth = 2 )
-DS_hybrid_trend_all_weighted['GFDL-esm4_1-2.6'].plot(label = 'GFDL-esm4 SSP126',marker='o', color='tab:blue', ax = ax1, linewidth = 2 )
-DS_hybrid_trend_all_weighted['GFDL-esm4_5-8.5'].plot(label = 'GFDL-esm4 SSP585',marker='o', color='tab:orange', ax = ax1, linewidth = 2 )
-DS_hybrid_trend_all_weighted['IPSL-cm6a-lr_1-2.6'].plot(label = 'IPSL-cm6a-lr SSP126',marker='^', color='tab:blue', ax = ax1, linewidth = 2 )
-DS_hybrid_trend_all_weighted['IPSL-cm6a-lr_5-8.5'].plot(label = 'IPSL-cm6a-lr SSP585',marker='^', color='tab:orange', ax = ax1, linewidth = 2 )
-DS_hybrid_trend_all_weighted['UKESM1-0-ll_1-2.6'].plot(label = 'UKESM1-0-ll SSP126',marker='s', color='tab:blue', ax = ax1, linewidth = 2 )
-DS_hybrid_trend_all_weighted['UKESM1-0-ll_5-8.5'].plot(label = 'UKESM1-0-ll SSP585',marker='s', color='tab:orange', ax = ax1, linewidth = 2 )
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8), sharex=True, sharey=True) # marker='o'marker='^',marker='s',
+ax1.axhline(y = DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+DS_hybrid_trend_all_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_all_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_all_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax1, linewidth = 2 )
+DS_hybrid_trend_all_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_all_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_all_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax1, linewidth = 2 )
 ax1.set_title("a) Soybean timeseries in no-adaptation scenario")
-ax1.legend(frameon = False)
-plt.ylim(0.8,2.9)
+# ax1.legend()
+
+# CUstomise legends
+dummy_lines = []
+dummy_lines.append(ax1.plot([],[], color="black", ls = 'dashed' )[0])
+dummy_lines.append(ax1.plot([],[], color="tab:blue", ls = 'solid' )[0])
+dummy_lines.append(ax1.plot([],[], color="tab:orange", ls = 'solid' )[0])
+dummy_lines.append(ax1.plot([],[], color="black", ls = 'solid',marker='o' )[0])
+dummy_lines.append(ax1.plot([],[], color="black", ls = 'solid', marker='^')[0])
+dummy_lines.append(ax1.plot([],[], color="black", ls = 'solid', marker='s' )[0])
+
+lines = ax1.get_lines()
+legend1 = ax1.legend([dummy_lines[i] for i in range(0,6)], ["2012 event", "SSP1-2.6", "SSP5-8.5","GFDL-esm4", "IPSL-cm6a-lr", "UKESM1-0-ll"], frameon = False,loc = 3, ncol=2)
+# legend2 = ax2.legend([dummy_lines2[i] for i in [0,1,2]], ["GFDL-esm4", "IPSL-cm6a-lr", "UKESM1-0-ll"], frameon = False,loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
 ax1.set_ylabel('')
 
-ax2.axhline(y = DS_historical_hybrid_weighted['Yield'].sel(time=2012).values, linestyle = 'dashed', label = '2012 event', linewidth = 2 )
-DS_hybrid_gfdl_26_weighted['Yield'].plot(label = 'GFDL-esm4 SSP126',marker='o', color='tab:blue', ax = ax2, linewidth = 2 )
-DS_hybrid_gfdl_85_weighted['Yield'].plot(label = 'GFDL-esm4 SSP585',marker='o', color='tab:orange', ax = ax2, linewidth = 2 )
-DS_hybrid_ipsl_26_weighted['Yield'].plot(label = 'IPSL-cm6a-lr SSP126',marker='^', color='tab:blue', ax = ax2, linewidth = 2 )
-DS_hybrid_ipsl_85_weighted['Yield'].plot(label = 'IPSL-cm6a-lr SSP585',marker='^', color='tab:orange', ax = ax2, linewidth = 2 )
-DS_hybrid_ukesm_26_weighted['Yield'].plot(label = 'UKESM1-0-ll SSP126',marker='s', color='tab:blue', ax = ax2, linewidth = 2 )
-DS_hybrid_ukesm_85_weighted['Yield'].plot(label = 'UKESM1-0-ll SSP585',marker='s', color='tab:orange', ax = ax2, linewidth = 2 )
+ax2.axhline(y = DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values, linestyle = 'dashed',color = 'k', label = '2012 event', linewidth = 2 )
+DS_hybrid_gfdl_26_weighted['Yield'].plot(color='tab:blue',marker='o', ax = ax2, linewidth = 2 )
+DS_hybrid_gfdl_85_weighted['Yield'].plot(marker='o', color='tab:orange', ax = ax2, linewidth = 2 )
+DS_hybrid_ipsl_26_weighted['Yield'].plot(color='tab:blue',marker='^', ax = ax2, linewidth = 2 )
+DS_hybrid_ipsl_85_weighted['Yield'].plot(color='tab:orange',marker='^', ax = ax2, linewidth = 2)
+DS_hybrid_ukesm_26_weighted['Yield'].plot(color='tab:blue',marker='s', ax = ax2, linewidth = 2 )
+DS_hybrid_ukesm_85_weighted['Yield'].plot(marker='s', color='tab:orange', ax = ax2, linewidth = 2  )
 ax2.set_title("b) Soybean timeseries in full-adaptation scenario")
 
 plt.ylabel('')
-fig.supylabel('Yield (ton/ha)')
+fig.supylabel('Production (Megatonne)')
 plt.tight_layout()
-plt.savefig('paper_figures/timeseries_projections_ab.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/timeseries_projections_ab.png', format='png', dpi=300)
 plt.show()
 
 
@@ -271,6 +284,8 @@ plt.show()
 # # Fig A1 - supplementary figure with the frequency of analogues per RCP, and the magnitude of the analogues (measured as analogue - historical event)
 # =============================================================================
 length_index = len(df_hybrid_trend_weighted_melt_counterfactuals_split[df_hybrid_trend_weighted_melt_counterfactuals_split['SSP']=='5-8.5'])
+magnitutde_counterfactuals = df_hybrid_trend_weighted_melt_counterfactuals_split['value'] - DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values
+
 fig,((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2, figsize=(12, 8), sharex=True)
  
 sns.histplot( x = df_hybrid_trend_weighted_melt_counterfactuals_split[['SSP','value']]['SSP'].sort_values().values, ax =ax1)
@@ -280,26 +295,35 @@ ax1.set_ylim(0,length_index+5)
 sns.histplot( x = df_hybrid_weighted_melt_counterfactuals_split[['SSP','value']]['SSP'].sort_values().values, ax=ax2)
 ax2.set_title('b)', loc='left')
 ax2.set_ylim(0,length_index+5)
+ax2.set_ylabel('')
+ax2.set_yticklabels([])
 
-bar = sns.boxplot(data = df_hybrid_trend_weighted_melt_counterfactuals_split, y= df_hybrid_trend_weighted_melt_counterfactuals_split['value'] - DS_historical_hybrid_weighted['Yield'].min().values , x= 'SSP', ax = ax3, order= ['1-2.6','5-8.5'])
-ax3.set_ylabel('Yield anomaly (ton/ha)')
+bar = sns.boxplot(data = df_hybrid_trend_weighted_melt_counterfactuals_split, y= df_hybrid_trend_weighted_melt_counterfactuals_split['value'] - DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values , x= 'SSP', ax = ax3, order= ['1-2.6','5-8.5'])
+ax3.set_ylabel('Production (Megatonne)')
 ax3.set_title('c)', loc='left')
-ax3.set_ylim(-1.2,0.2)
+ax3.set_ylim(magnitutde_counterfactuals.min() - 5,magnitutde_counterfactuals.max())
 
-bar = sns.boxplot(data = df_hybrid_weighted_melt_counterfactuals_split, y= df_hybrid_weighted_melt_counterfactuals_split['value'] - DS_historical_hybrid_weighted['Yield'].min().values , x= 'SSP', ax = ax4, order= ['1-2.6','5-8.5'])
-ax4.set_ylabel('Yield anomaly (ton/ha)')
+bar = sns.boxplot(data = df_hybrid_weighted_melt_counterfactuals_split, y= df_hybrid_weighted_melt_counterfactuals_split['value'] - DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values , x= 'SSP', ax = ax4, order= ['1-2.6','5-8.5'])
+ax4.set_ylabel('')
 ax4.set_title('d)', loc='left')
-ax4.set_ylim(-1.2,0.2)
+ax4.set_ylim(magnitutde_counterfactuals.min() - 5,magnitutde_counterfactuals.max())
+ax4.set_yticklabels([])
 
 plt.tight_layout()
-plt.savefig('paper_figures/fig_sup_timeseries_adap.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/fig_sup_timeseries_adap.png', format='png', dpi=300)
 plt.show()
 
-diff_rcp85 = df_hybrid_trend_weighted_melt_counterfactuals_split.where(df_hybrid_trend_weighted_melt_counterfactuals_split['SSP'] == '5-8.5').mean().values - DS_historical_hybrid_weighted['Yield'].mean().values
-diff_rcp26 = df_hybrid_trend_weighted_melt_counterfactuals_split.where(df_hybrid_trend_weighted_melt_counterfactuals_split['SSP'] == '1-2.6').mean().values - DS_historical_hybrid_weighted['Yield'].mean().values
+diff_rcp85 = df_hybrid_weighted_melt_counterfactuals_split.where(df_hybrid_weighted_melt_counterfactuals_split['SSP'] == '5-8.5').mean().values- DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values
+diff_rcp26 = df_hybrid_weighted_melt_counterfactuals_split.where(df_hybrid_weighted_melt_counterfactuals_split['SSP'] == '1-2.6').mean().values- DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values
 
-print('Difference mean rcp85 losses to the 2012 event is:', diff_rcp85 / (DS_historical_hybrid_weighted['Yield'].sel(time=2012).values - DS_historical_hybrid_weighted['Yield'].mean().values) )
-print('Difference mean rcp26 losses to the 2012 event is:', diff_rcp26 / (DS_historical_hybrid_weighted['Yield'].sel(time=2012).values - DS_historical_hybrid_weighted['Yield'].mean().values) )
+diff_rcp85_trend = df_hybrid_trend_weighted_melt_counterfactuals_split.where(df_hybrid_trend_weighted_melt_counterfactuals_split['SSP'] == '5-8.5').mean().values- DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values
+diff_rcp26_trend = df_hybrid_trend_weighted_melt_counterfactuals_split.where(df_hybrid_trend_weighted_melt_counterfactuals_split['SSP'] == '1-2.6').mean().values- DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values
+
+print('Difference trends mean rcp85 losses to the 2012 event is:', diff_rcp85_trend / (DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values) )
+print('Difference trends mean rcp26 losses to the 2012 event is:', diff_rcp26_trend / (DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values) )
+
+print('Difference mean rcp85 losses to the 2012 event is:', diff_rcp85 / (DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values) )
+print('Difference mean rcp26 losses to the 2012 event is:', diff_rcp26 / (DS_historical_hybrid_weighted['Yield'].sel(time = 2012).values) )
 
 print('Number of rcp26 analogues:', len(df_hybrid_weighted_melt_counterfactuals_split.where(df_hybrid_weighted_melt_counterfactuals_split['SSP'] == '1-2.6').dropna()))
 print('Number of rcp85 analogues:', len(df_hybrid_weighted_melt_counterfactuals_split.where(df_hybrid_weighted_melt_counterfactuals_split['SSP'] == '5-8.5').dropna()))
@@ -309,10 +333,16 @@ print('Number of trend rcp85 analogues:', len(df_hybrid_trend_weighted_melt_coun
       
 #%% Comparison of factual and counterfactuals
 
-# =============================================================================
-# # Identify the FACTUAL case - Minimum value with respect to the mean
-# =============================================================================
+# <> ADD timeseriees, pdfs and  STD of the hybrid model for country
+
+# Identify the FACTUAL case - Minimum value with respect to the mean
 yield_factual = DS_historical_hybrid_weighted.sel(time = 2012)['Yield'].values
+
+factual_loss_2012_spatial = DS_historical_hybrid['Yield'].sel(time=2012) - DS_historical_hybrid['Yield'].sel(time = slice(2000,2015)).mean('time')
+
+plot_2d_am_map(factual_loss_2012_spatial, colormap = 'RdBu', vmin = -1, vmax = 1, title = "b) 2012 prediction")
+
+factual_loss_2012_weighted_production = yield_factual - DS_historical_hybrid_weighted.sel(time = slice(2000,2015)).mean('time')['Yield'].values
 
 # =============================================================================
 # COUNTERFACTUALS
@@ -331,38 +361,17 @@ print('Total counterfactuals: ', len(np.hstack(list_counterfactuals_scenarios)) 
 # Create dataset with spatailly explict counterfactuals only 
 DS_counterfactuals_spatial = DS_hybrid_all.where(DS_counterfactuals_weighted_am > -10)
 
-# Find the counterfactual shocks using a baseline as reference, either historical yields or the factual as reference
-DS_hybrid_counterfactuals_spatial_shock = DS_counterfactuals_spatial.dropna('time', how='all') - DS_historical_hybrid['Yield'].mean('time')
-DS_hybrid_counterfactuals_spatial_shock_2012 = DS_counterfactuals_spatial.dropna('time', how='all') - DS_historical_hybrid['Yield'].sel(time = 2012)
-
-# =============================================================================
-# # Plots the counterfactuals per scenario 
-# =============================================================================
-list_ds_counterfactuals = []
-for feature in list(DS_hybrid_counterfactuals_spatial_shock.keys()):
-    counterfactuals_by_rcp = DS_hybrid_counterfactuals_spatial_shock[feature].sel(time = DS_counterfactuals_weighted_am[feature].time.where(DS_counterfactuals_weighted_am[feature] > -10).dropna(dim = 'time'))
-    plot_2d_am_multi(counterfactuals_by_rcp, map_title = feature )
-    list_ds_counterfactuals.append(counterfactuals_by_rcp)
-combined = xr.concat(list_ds_counterfactuals, dim='time')
-ds_combined = combined.to_dataset(name='yield (ton/ha)')
-
-# spatial distribution of the future analogues with respect to the 2012 year
-plot_2d_am_map(ds_combined['yield (ton/ha)'].mean('time'), colormap = 'RdBu', save_fig = 'mean_fut_analogues_spatial')
-
-# for feature in list(DS_hybrid_counterfactuals_spatial_shock_2012.keys()):
-#     plot_2d_am_multi(DS_hybrid_counterfactuals_spatial_shock_2012[feature].sel(time = DS_counterfactuals_weighted_am[feature].time.where(DS_counterfactuals_weighted_am[feature] > -10).dropna(dim = 'time')), map_title = feature )
-   
 # =============================================================================
 # Climatic analysis of counterfactuals
 # =============================================================================
 # Function converting the climate data for the counterfactuals into weighted timeseries 
-def convert_clim_weighted_ensemble(df_clim, DS_counterfactuals_weighted_country, feature, DS_area):
+def convert_clim_weighted_ensemble(df_clim, DS_counterfactuals_weighted_country, feature, DS_area, mode = 'production'):
     DS_clim = xr.Dataset.from_dataframe(df_clim)
     DS_clim = rearrange_latlot(DS_clim)
     # Countefactuals only
     DS_clim_counter = DS_clim.where(DS_counterfactuals_weighted_country[feature].time.where(DS_counterfactuals_weighted_country[feature] > -10).dropna(dim = 'time'))
    
-    DS_clim_counter_weight_country = weighted_conversion(DS_clim_counter, DS_area = DS_area)
+    DS_clim_counter_weight_country = weighted_prod_conversion(DS_clim_counter, DS_area = DS_area, mode = mode)
     df_clim_counter_weight_country = DS_clim_counter_weight_country.to_dataframe()
     df_clim_counter_weight_country['scenario'] = 'Analogues'
     df_clim_counter_weight_country['model_used'] = feature
@@ -385,7 +394,7 @@ df_hybrid_fut_ipsl_585_am = pd.read_csv('output_models_am/climatic_projections/m
 df_hybrid_fut_ipsl_126_am = pd.read_csv('output_models_am/climatic_projections/model_input_ipsl-cm6a-lr_ssp126_default_2015_2100.csv', index_col=[0,1,2],).iloc[:, 1:]
 
 # Conversion of historical series to weighted timeseries    
-DS_conditions_hist_weighted_am = weighted_conversion(DS_conditions_hist, DS_area = DS_harvest_area_hist)
+DS_conditions_hist_weighted_am = weighted_prod_conversion(DS_conditions_hist, DS_area = DS_harvest_area_hist , mode = 'yield')
 DS_conditions_2012_weighted_am = DS_conditions_hist_weighted_am.sel(time=2012)
 # DS to df
 df_clim_hist_weighted = DS_conditions_hist_weighted_am.to_dataframe()
@@ -393,33 +402,32 @@ df_clim_hist_weighted['scenario'] = 'Climatology'
 df_clim_hist_weighted['model_used'] = 'Climatology'
 
 # Conversion of future series to weighted timeseries    
-df_clim_counter_ukesm_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_585_am, DS_counterfactuals_weighted_am, 'UKESM1-0-ll_5-8.5', DS_harvest_area_fut)    
-df_clim_counter_ukesm_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_126_am, DS_counterfactuals_weighted_am, 'UKESM1-0-ll_1-2.6', DS_harvest_area_fut)    
-df_clim_counter_gfdl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_585_am, DS_counterfactuals_weighted_am, 'GFDL-esm4_5-8.5', DS_harvest_area_fut)    
-df_clim_counter_gfdl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_126_am, DS_counterfactuals_weighted_am, 'GFDL-esm4_1-2.6', DS_harvest_area_fut)    
-df_clim_counter_ipsl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_585_am, DS_counterfactuals_weighted_am, 'IPSL-cm6a-lr_5-8.5', DS_harvest_area_fut)    
-df_clim_counter_ipsl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_126_am, DS_counterfactuals_weighted_am, 'IPSL-cm6a-lr_1-2.6', DS_harvest_area_fut)    
+df_clim_counter_ukesm_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_585_am, DS_counterfactuals_weighted_am, 'UKESM1-0-ll_5-8.5', DS_harvest_area_fut, mode = 'yield')    
+df_clim_counter_ukesm_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_126_am, DS_counterfactuals_weighted_am, 'UKESM1-0-ll_1-2.6', DS_harvest_area_fut, mode = 'yield')    
+df_clim_counter_gfdl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_585_am, DS_counterfactuals_weighted_am, 'GFDL-esm4_5-8.5', DS_harvest_area_fut, mode = 'yield')    
+df_clim_counter_gfdl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_126_am, DS_counterfactuals_weighted_am, 'GFDL-esm4_1-2.6', DS_harvest_area_fut, mode = 'yield')    
+df_clim_counter_ipsl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_585_am, DS_counterfactuals_weighted_am, 'IPSL-cm6a-lr_5-8.5', DS_harvest_area_fut, mode = 'yield')  
+df_clim_counter_ipsl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_126_am, DS_counterfactuals_weighted_am, 'IPSL-cm6a-lr_1-2.6', DS_harvest_area_fut, mode = 'yield')    
 
 # Merge dataframes with different names
 df_clim_counterfactuals_weighted_all_am = pd.concat([df_clim_hist_weighted, df_clim_counter_ukesm_85, df_clim_counter_ukesm_26, 
                                                   df_clim_counter_gfdl_85, df_clim_counter_gfdl_26,
                                                   df_clim_counter_ipsl_85, df_clim_counter_ipsl_26])
 
-
 # =============================================================================
 # # Fig 3: Plot boxplots comparing the 2012 event and the analogues
 # =============================================================================
 names = df_clim_counterfactuals_weighted_all_am.columns.drop(['scenario', 'model_used'])
 ncols = len(names)
-fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_am.columns)/3)), figsize=(10, 8), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
+fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_am.columns)/3)), figsize=(8, 8), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
 
 for name, ax in zip(names, axes.flatten()):
     df_merge_subset_am = df_clim_counterfactuals_weighted_all_am[df_clim_counterfactuals_weighted_all_am.index != 2012].loc[:,[name,'scenario']]
     df_merge_subset_am['variable'] = name
+    ax.axhline( y = DS_conditions_2012_weighted_am[name].mean(), color = 'red', linestyle = 'dashed',linewidth =2, label = '2012 event', zorder = 19)
     # ax.axhspan(df_merge_subset_am[name].where(df_merge_subset_am['scenario'] == 'Climatology').dropna().quantile(0.05), df_merge_subset_am[name].where(df_merge_subset_am['scenario'] == 'Climatology').dropna().quantile(0.95), facecolor='0.2', alpha=0.3, zorder = 0, label = 'Climatology')
     g1 = sns.boxplot(y=name, x = 'variable', hue = 'scenario', data=df_merge_subset_am.where(df_merge_subset_am['scenario'] == 'Analogues').dropna(), orient='v', ax=ax)
     # g1 = sns.scatterplot(y=name, x = 'variable', data=df_merge_subset_am.where(df_merge_subset_am['scenario'] == 'Analogues' ), ax=ax, color = 'orange', s=60, label = 'Analogues', zorder = 20)
-    ax.axhline( y = DS_conditions_2012_weighted_am[name].mean(), color = 'red', linestyle = 'dashed',linewidth =2, label = '2012 event', zorder = 19)
     g1.set(xticklabels=[])  # remove the tick labels
     g1.set(xlabel= name)
     if name in names[0:3]:
@@ -428,11 +436,16 @@ for name, ax in zip(names, axes.flatten()):
         g1.set(ylabel='Temperature (°C)' )  # remove the axis label   
     ax.get_legend().remove()
     g1.tick_params(bottom=False)  # remove the ticks
+    # Change the visualization to put the 2012 event as central to the plot
+    lower_boundary = DS_conditions_2012_weighted_am[name].mean() - df_merge_subset_am.where(df_merge_subset_am['scenario'] == 'Analogues').dropna()[name].min()
+    higher_boundary = df_merge_subset_am.where(df_merge_subset_am['scenario'] == 'Analogues').dropna()[name].max() - DS_conditions_2012_weighted_am[name].mean()
+    buffer_zone = max(lower_boundary, higher_boundary)
+    ax.set_ylim(DS_conditions_2012_weighted_am[name].mean() - buffer_zone, DS_conditions_2012_weighted_am[name].mean()+buffer_zone)
 handles, labels = ax.get_legend_handles_labels()
 fig.legend(handles, labels, loc=[0.3, -0.01], ncol=3, frameon=False)
 # plt.suptitle('2012 analogues')
 plt.tight_layout()
-plt.savefig('paper_figures/clim_conditions_2012.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/clim_conditions_2012.png', format='png', dpi=300)
 plt.show()
 
 
@@ -441,7 +454,7 @@ plt.show()
 # =============================================================================
 names = df_clim_counterfactuals_weighted_all_am.columns.drop(['scenario', 'model_used'])
 ncols = len(names)
-fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_am.columns)/3)), figsize=(10, 8), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
+fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_am.columns)/3)), figsize=(8, 8), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
 
 for name, ax in zip(names, axes.flatten()):
     df_merge_subset_am = df_clim_counterfactuals_weighted_all_am[df_clim_counterfactuals_weighted_all_am.index != 2012].loc[:,[name,'scenario']]
@@ -462,7 +475,7 @@ handles, labels = ax.get_legend_handles_labels()
 fig.legend(handles, labels, loc=[0.3, -0.01], ncol=3, frameon=False)
 # plt.suptitle('2012 analogues')
 plt.tight_layout()
-plt.savefig('paper_figures/fig_si_clim_conditions_2012_climatology.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/fig_si_clim_conditions_2012_climatology.png', format='png', dpi=300)
 plt.show()
 
 
@@ -471,7 +484,7 @@ plt.show()
 # =============================================================================
 names = df_clim_counterfactuals_weighted_all_am.columns.drop(['scenario', 'model_used'])
 ncols = len(names)
-fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_am.columns)/3)), figsize=(10, 8), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
+fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_am.columns)/3)), figsize=(8, 8), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
 
 for name, ax in zip(names, axes.flatten()):
     df_merge_subset_am = df_clim_counterfactuals_weighted_all_am[df_clim_counterfactuals_weighted_all_am.index != 2012].loc[:,[name,'scenario']]
@@ -492,52 +505,45 @@ handles, labels = ax.get_legend_handles_labels()
 fig.legend(handles, labels, loc=[0.3, -0.01], ncol=3, frameon=False)
 # plt.suptitle('2012 analogues')
 plt.tight_layout()
-# plt.savefig('paper_figures/fig_si_clim_conditions_2012_climatology.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/fig_si_clim_conditions_2012_climatology.png', format='png', dpi=300)
 plt.show()
-
 
 #%% 2012 analogues at a spatial level - how each country is affected by the 2012 analogues
 # =============================================================================
 '''
 Try to compare the counterfatuals from a country perspective, does it mean one of the three countries is more prone to losses / failures?
 '''
-# Determine country level yields for historical period
 DS_historical_hybrid_us = xr.load_dataset("output_models_am/hybrid_epic_us-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc")
 DS_historical_hybrid_br = xr.load_dataset("output_models_am/hybrid_epic_br-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc")
 DS_historical_hybrid_arg = xr.load_dataset("output_models_am/hybrid_epic_arg-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc")
 
-DS_mirca_us_hist = DS_harvest_area_sim.where(DS_historical_hybrid_us['Yield'] > -10)
-DS_mirca_br_hist = DS_harvest_area_sim.where(DS_historical_hybrid_br['Yield'] > -10)
-DS_mirca_arg_hist = DS_harvest_area_sim.where(DS_historical_hybrid_arg['Yield'] > -10)
+def country_scale_conversion(country, DS_harvest_area_sim, DS_counterfactuals_spatial):
+    # Generate the calendars for both the historical and future periods, then the 2012 analogues in each country and the historical values per country
+    # Determine country level yields for historical period
+    DS_historical_hybrid_country = xr.load_dataset(f"output_models_am/hybrid_epic_{country}-iiasa_gswp3-w5e5_obsclim_2015soc_default_yield-soy-noirr_global_annual_1901_2016.nc")
+    DS_mirca_country_hist = DS_harvest_area_sim.where(DS_historical_hybrid_country['Yield'] > -10)
+    
+    # Determine country level yields for future projections
+    DS_counterfactual_country = DS_counterfactuals_spatial.where(DS_historical_hybrid_country['Yield'].sel(time = 2012) > -10)
+    DS_mirca_country = DS_harvest_area_fut.where(DS_historical_hybrid_country['Yield'].sel(time = 2012) > -10)
+        
+    plot_2d_am_map(DS_counterfactual_country['UKESM1-0-ll_5-8.5'].sel(time=2042))
+      
+    # Weighted analysis historical
+    DS_historical_hybrid_country_weight = weighted_prod_conversion(DS_historical_hybrid_country, DS_area = DS_mirca_country_hist)
+    
+    return DS_mirca_country_hist, DS_mirca_country, DS_counterfactual_country, DS_historical_hybrid_country_weight
 
-plot_2d_am_map(DS_historical_hybrid_us.Yield.sel(time=1999))
-
-# Determine country level yields for future projections
-DS_counterfactual_us = DS_counterfactuals_spatial.where(DS_historical_hybrid_us['Yield'].sel(time = 2012) > -10)
-DS_mirca_us = DS_harvest_area_fut.where(DS_historical_hybrid_us['Yield'].sel(time = 2012) > -10)
-
-DS_counterfactual_br = DS_counterfactuals_spatial.where(DS_historical_hybrid_br['Yield'].sel(time = 2012) > -10)
-DS_mirca_br = DS_harvest_area_fut.where(DS_historical_hybrid_br['Yield'].sel(time = 2012) > -10)
-
-DS_counterfactual_arg = DS_counterfactuals_spatial.where(DS_historical_hybrid_arg['Yield'].sel(time = 2012) > -10)
-DS_mirca_arg = DS_harvest_area_fut.where(DS_historical_hybrid_arg['Yield'].sel(time = 2012) > -10)
-
-plot_2d_am_map(DS_counterfactual_us['UKESM1-0-ll_5-8.5'].sel(time=2042))
-plot_2d_am_map(DS_counterfactual_br['UKESM1-0-ll_5-8.5'].sel(time=2042))
-plot_2d_am_map(DS_counterfactual_arg['UKESM1-0-ll_5-8.5'].sel(time=2042))
-plot_2d_am_map(DS_mirca_arg.harvest_area)
-
-# Weighted analysis historical
-DS_historical_hybrid_us_weight = weighted_conversion(DS_historical_hybrid_us, DS_area = DS_mirca_us_hist)
-DS_historical_hybrid_br_weight = weighted_conversion(DS_historical_hybrid_br, DS_area = DS_mirca_br_hist)
-DS_historical_hybrid_arg_weight = weighted_conversion(DS_historical_hybrid_arg, DS_area = DS_mirca_arg_hist)
+DS_mirca_us_hist, DS_mirca_us, DS_counterfactual_us, DS_historical_hybrid_us_weight = country_scale_conversion('us', DS_harvest_area_sim, DS_counterfactuals_spatial)
+DS_mirca_br_hist, DS_mirca_br, DS_counterfactual_br, DS_historical_hybrid_br_weight = country_scale_conversion('br', DS_harvest_area_sim, DS_counterfactuals_spatial)
+DS_mirca_arg_hist, DS_mirca_arg, DS_counterfactual_arg, DS_historical_hybrid_arg_weight = country_scale_conversion('arg', DS_harvest_area_sim, DS_counterfactuals_spatial)
 
 # Plot historical timeline of weighted soybean yield
 plt.plot(DS_historical_hybrid_us_weight.time, DS_historical_hybrid_us_weight['Yield'], label = 'US')
 plt.plot(DS_historical_hybrid_br_weight.time, DS_historical_hybrid_br_weight['Yield'], label = 'Brazil')
 plt.plot(DS_historical_hybrid_arg_weight.time, DS_historical_hybrid_arg_weight['Yield'], label = 'Argentina')
 plt.title('Historical hybrid data')
-plt.ylim(1,3)
+# plt.ylim(1,3)
 plt.legend()
 plt.show()
 
@@ -564,63 +570,122 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-# Weighted analysis future projections
-DS_counterfactual_us_weighted = weighted_conversion(DS_counterfactual_us, DS_area = DS_mirca_us)
+
+# =============================================================================
+# # FIGURE 4: Plots the counterfactuals per scenario 
+# =============================================================================
+
+# Find the counterfactual shocks using a baseline as reference, either historical yields or the factual as reference
+DS_hybrid_counterfactuals_spatial_shock = DS_counterfactuals_spatial.dropna('time', how='all') - DS_historical_hybrid['Yield'].mean('time')
+DS_hybrid_counterfactuals_spatial_shock_2012 = DS_counterfactuals_spatial.dropna('time', how='all') - DS_historical_hybrid['Yield'].sel(time = 2012)
+
+def counterfactuals_per_scenario(DS):
+    list_ds_counterfactuals = []
+    for feature in list(DS.keys()):
+        counterfactuals_by_rcp = DS[feature].sel(time = DS_counterfactuals_weighted_am[feature].time.where(DS_counterfactuals_weighted_am[feature] > -10).dropna(dim = 'time'))
+        plot_2d_am_multi(counterfactuals_by_rcp, map_title = feature )
+        list_ds_counterfactuals.append(counterfactuals_by_rcp)
+    combined = xr.concat(list_ds_counterfactuals, dim='time')
+    ds_combined = combined.to_dataset(name='Yield (ton/ha)')
+    return ds_combined
+
+# Spatial distribution of the future analogues with respect to the 2012 year
+DS_counterfactuals_spatal_together_climatology = counterfactuals_per_scenario(DS_hybrid_counterfactuals_spatial_shock)
+DS_counterfactuals_spatal_together_2012 = counterfactuals_per_scenario(DS_hybrid_counterfactuals_spatial_shock_2012)
+
+plot_2d_am_map(DS_counterfactuals_spatal_together_climatology['Yield (ton/ha)'].mean('time'), colormap = 'RdBu', save_fig = 'mean_fut_analogues_spatial')
+plot_2d_am_map(DS_counterfactuals_spatal_together_2012['Yield (ton/ha)'].mean('time'), colormap = 'RdBu', save_fig = 'mean_fut_analogues_spatial_2012')
+
+DS_counterfactuals_2012_valuesforus = weighted_prod_conversion(DS_counterfactuals_spatal_together_2012, DS_area = DS_mirca_us)
+DS_counterfactuals_2012_valuesforbr = weighted_prod_conversion(DS_counterfactuals_spatal_together_2012, DS_area = DS_mirca_br)
+DS_counterfactuals_2012_valuesforarg = weighted_prod_conversion(DS_counterfactuals_spatal_together_2012, DS_area = DS_mirca_arg)
+
+print(f'\n The average anomalies of the 2012 analogues compared to the original event (2012) is for the US: {DS_counterfactuals_2012_valuesforus["Yield (ton/ha)"].mean().values}, BR: {DS_counterfactuals_2012_valuesforbr["Yield (ton/ha)"].mean().values}, and ARG: {DS_counterfactuals_2012_valuesforarg["Yield (ton/ha)"].mean().values}')
+
+#%% Timeseries of wsoybean production by country with trends
+
+DS_hybrid_trend_us_weighted = weighted_prod_conversion(DS_hybrid_trend_all, DS_area = DS_mirca_us)
+DS_hybrid_trend_br_weighted = weighted_prod_conversion(DS_hybrid_trend_all, DS_area = DS_mirca_br)
+DS_hybrid_trend_arg_weighted = weighted_prod_conversion(DS_hybrid_trend_all, DS_area = DS_mirca_arg)
+
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 8), sharex=True, sharey=True) # marker='o'marker='^',marker='s',
+ax1.axhline(y = DS_historical_hybrid_us_weight['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+DS_hybrid_trend_us_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_us_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_us_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax1, linewidth = 2 )
+DS_hybrid_trend_us_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_us_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax1, linewidth = 2 )
+DS_hybrid_trend_us_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax1, linewidth = 2 )
+ax1.set_title("a) US")
+ax1.set_ylabel('')
+
+# ax1.legend()
+ax2.axhline(y = DS_historical_hybrid_br_weight['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+DS_hybrid_trend_br_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax2, linewidth = 2 )
+DS_hybrid_trend_br_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax2, linewidth = 2 )
+DS_hybrid_trend_br_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax2, linewidth = 2 )
+DS_hybrid_trend_br_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax2, linewidth = 2 )
+DS_hybrid_trend_br_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax2, linewidth = 2 )
+DS_hybrid_trend_br_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax2, linewidth = 2 )
+ax2.set_title("b) Brazil")
+
+
+lines = ax2.get_lines()
+legend1 = ax2.legend([dummy_lines[i] for i in range(0,6)], ["2012 event", "SSP1-2.6", "SSP5-8.5","GFDL-esm4", "IPSL-cm6a-lr", "UKESM1-0-ll"], frameon = False,loc = 3, ncol=2)
+# legend2 = ax2.legend([dummy_lines2[i] for i in [0,1,2]], ["GFDL-esm4", "IPSL-cm6a-lr", "UKESM1-0-ll"], frameon = False,loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
+ax2.set_ylabel('')
+
+ax3.axhline(y = DS_historical_hybrid_arg_weight['Yield'].sel(time = 2012).values, linestyle = 'dashed', color = 'k', label = '2012 event', linewidth = 2 )
+DS_hybrid_trend_arg_weighted['GFDL-esm4_1-2.6'].plot(color='tab:blue',marker='o', ax = ax3, linewidth = 2 )
+DS_hybrid_trend_arg_weighted['GFDL-esm4_5-8.5'].plot( color='tab:orange',marker='o', ax = ax3, linewidth = 2 )
+DS_hybrid_trend_arg_weighted['IPSL-cm6a-lr_1-2.6'].plot( color='tab:blue', marker='^',ax = ax3, linewidth = 2 )
+DS_hybrid_trend_arg_weighted['IPSL-cm6a-lr_5-8.5'].plot( marker='^', color='tab:orange', ax = ax3, linewidth = 2 )
+DS_hybrid_trend_arg_weighted['UKESM1-0-ll_1-2.6'].plot( color='tab:blue',marker='s', ax = ax3, linewidth = 2 )
+DS_hybrid_trend_arg_weighted['UKESM1-0-ll_5-8.5'].plot( marker='s', color='tab:orange', ax = ax3, linewidth = 2 )
+ax3.set_title("a) Argentina")
+ax3.set_ylabel('')
+plt.tight_layout()
+plt.show()
+
+#%% Analysis at a country level - 2012 event from a country perspective, aggregation at country level
+
+# Failures per country
+yield_factual_2012_us = DS_historical_hybrid_us_weight.sel(time = 2012).Yield.values
+yield_factual_2012_br = DS_historical_hybrid_br_weight.sel(time = 2012).Yield.values
+yield_factual_2012_arg = DS_historical_hybrid_arg_weight.sel(time = 2012).Yield.values
+
+# Group
+yield_factual_2012_am = pd.DataFrame([yield_factual_2012_us, yield_factual_2012_br, yield_factual_2012_arg], index = ['US', 'Brazil', 'Argentina'])
+mean_historical_values_per_country = pd.DataFrame([DS_historical_hybrid_us_weight.Yield.mean('time').values, DS_historical_hybrid_br_weight.Yield.mean('time').values,  DS_historical_hybrid_arg_weight.Yield.mean('time').values], index = ['US', 'Brazil', 'Argentina'])
+
+# 2012 analogues for each country
+DS_counterfactual_us_weighted = weighted_prod_conversion(DS_counterfactual_us, DS_area = DS_mirca_us)
 DS_counterfactual_us_weighted = DS_counterfactual_us_weighted.where(DS_counterfactual_us_weighted > 0).dropna('time', how = 'all')
 
-DS_counterfactual_br_weighted = weighted_conversion(DS_counterfactual_br, DS_area = DS_mirca_br)
+DS_counterfactual_br_weighted = weighted_prod_conversion(DS_counterfactual_br, DS_area = DS_mirca_br)
 DS_counterfactual_br_weighted = DS_counterfactual_br_weighted.where(DS_counterfactual_br_weighted > 0).dropna('time', how = 'all')
 
-DS_counterfactual_arg_weighted = weighted_conversion(DS_counterfactual_arg, DS_area = DS_mirca_arg)
+DS_counterfactual_arg_weighted = weighted_prod_conversion(DS_counterfactual_arg, DS_area = DS_mirca_arg)
 DS_counterfactual_arg_weighted = DS_counterfactual_arg_weighted.where(DS_counterfactual_arg_weighted > 0).dropna('time', how = 'all')
 
 df_mean_yields = pd.DataFrame( [DS_counterfactual_us_weighted.to_dataframe().mean(), DS_counterfactual_br_weighted.to_dataframe().mean(),
                                DS_counterfactual_arg_weighted.to_dataframe().mean()], 
                                           index = ['US', 'Brazil', 'Argentina'])
 
-# =============================================================================
-# # Plot accumulated mean losses of projected counterfactuals per country with reference to aggregated series
-# =============================================================================
-df_mean_yields.plot.bar(figsize = (12,8))
-plt.axhline(y = yield_factual, linestyle = 'dashed', label = 'Factual')
-plt.show()
 
-# Plot accumulated mean losses per country - Absolute shock
-sns.barplot(data = df_mean_yields.T )
-plt.axhline(y = yield_factual, color = 'black', linestyle = 'dashed', label = '2012 event')
-plt.legend(frameon=False)
-plt.title('Counterfactuals absolute values')
-plt.ylabel('ton/ha')
-plt.show()
+yield_climatology_2000_2015_us = DS_historical_hybrid_us_weight.sel(time = slice(2000,2015)).Yield.mean('time').values
+yield_climatology_2000_2015_br = DS_historical_hybrid_br_weight.sel(time = slice(2000,2015)).Yield.mean('time').values
+yield_climatology_2000_2015_arg = DS_historical_hybrid_arg_weight.sel(time = slice(2000,2015)).Yield.mean('time').values
 
-# Plot accumulated mean losses per country - Absolute shock
-sns.barplot(data = df_mean_yields.T - DS_historical_hybrid_weighted['Yield'].mean().values)
-plt.axhline(y = yield_factual - DS_historical_hybrid_weighted['Yield'].mean().values, color = 'black', linestyle = 'dashed', label = '2012 event')
-plt.legend(frameon=False)
-plt.title('Analogues of the 2012 event in each country')
-plt.ylabel('Yield anomaly (ton/ha)')
-plt.show()
+loss_country_2012_us = yield_factual_2012_us - yield_climatology_2000_2015_us
+loss_country_2012_br = yield_factual_2012_br - yield_climatology_2000_2015_br
+loss_country_2012_arg = yield_factual_2012_arg - yield_climatology_2000_2015_arg
+print(f'2012 year loss was for the US: {loss_country_2012_us}, BR: {loss_country_2012_br}, ARG: {loss_country_2012_arg} \n Total loss: {loss_country_2012_us+loss_country_2012_br+loss_country_2012_arg}')
 
-# Plot accumulated mean losses per country - Relative shock
-sns.barplot(data = df_mean_yields.T / DS_historical_hybrid_weighted['Yield'].mean().values - 1)
-plt.axhline(y = yield_factual / DS_historical_hybrid_weighted['Yield'].mean().values - 1, color = 'black', linestyle = 'dashed', label = '2012 event')
-plt.legend(frameon=False)
-plt.title('Analogues of the 2012 event in each country (relative)')
-plt.show()
-
-#%% Analysis at a country level - 2012 event from a country perspective, aggregation at country level
-
-# =============================================================================
-# Failures per country
-yield_factual_2012_us = DS_historical_hybrid_us_weight.sel(time = 2012).Yield.values
-yield_factual_2012_br = DS_historical_hybrid_br_weight.sel(time = 2012).Yield.values
-yield_factual_2012_arg = DS_historical_hybrid_arg_weight.sel(time = 2012).Yield.values
-yield_factual_2012_am = pd.DataFrame([yield_factual_2012_us, yield_factual_2012_br, yield_factual_2012_arg], index = ['US', 'Brazil', 'Argentina'])
-
-mean_historical_values_per_country = pd.DataFrame([DS_historical_hybrid_us_weight.Yield.mean('time').values, DS_historical_hybrid_br_weight.Yield.mean('time').values,  DS_historical_hybrid_arg_weight.Yield.mean('time').values], index = ['US', 'Brazil', 'Argentina'])
-
+# Extra information but not really useful
 show_historical_data = False
 if show_historical_data == True:
+    
     # =============================================================================
     # # Historical failures at a country level
     # =============================================================================
@@ -634,23 +699,19 @@ if show_historical_data == True:
     plt.show()
     
     # Absolute shocks
-    plt.bar(x = 'US', height = yield_factual_2012_us - DS_historical_hybrid_us_weight.Yield.mean('time').values)
-    plt.bar(x = 'Brazil', height = yield_factual_2012_br - DS_historical_hybrid_br_weight.Yield.mean('time').values)
-    plt.bar(x = 'Argentina', height = yield_factual_2012_arg- DS_historical_hybrid_arg_weight.Yield.mean('time').values)
-    plt.axhline(y = yield_factual - DS_historical_hybrid_weighted.Yield.mean('time').values, color = 'black', linestyle = 'dashed', label = 'Aggregated')
+    plt.bar(x = 'US', height = loss_country_2012_us)
+    plt.bar(x = 'Brazil', height = loss_country_2012_br)
+    plt.bar(x = 'Argentina', height = loss_country_2012_arg)
     plt.title('2012 absolute shock')
-    plt.ylabel('Yield anomaly (ton/ha)')
-    plt.legend()
+    plt.ylabel('Production anomaly (Megatonne)')
     plt.show()
     
     # Relative shocks
-    plt.bar(x = 'US', height = yield_factual_2012_us / DS_historical_hybrid_us_weight.Yield.mean('time').values - 1)
-    plt.bar(x = 'Brazil', height = yield_factual_2012_br / DS_historical_hybrid_br_weight.Yield.mean('time').values - 1)
-    plt.bar(x = 'Argentina', height = yield_factual_2012_arg / DS_historical_hybrid_arg_weight.Yield.mean('time').values - 1)
-    plt.axhline(y = yield_factual / DS_historical_hybrid_weighted.Yield.mean('time').values - 1, color = 'black', linestyle = 'dashed', label = 'Aggregated')
+    plt.bar(x = 'US', height = yield_factual_2012_us /yield_climatology_2000_2015_us - 1)
+    plt.bar(x = 'Brazil', height = yield_factual_2012_br / yield_climatology_2000_2015_br - 1)
+    plt.bar(x = 'Argentina', height = yield_factual_2012_arg / yield_climatology_2000_2015_arg - 1)
     plt.title('2012 relative shock')
-    plt.ylabel('0-1')
-    plt.legend()
+    plt.ylabel('Relative anomaly')
     plt.show()
     
     # =============================================================================
@@ -659,24 +720,18 @@ if show_historical_data == True:
    
     # Counterfactuals of 2012 event in absolute values
     sns.barplot(data = (df_mean_yields.T ))
-    plt.axhline(y = yield_factual, color = 'black', linestyle = 'dashed', label = '2012 event')
-    plt.legend()
     plt.title('Counterfactuals absolute values')
     plt.ylabel('ton/ha')
     plt.show()
     
     # Counterfactuals of 2012 event in absolute shock
     sns.barplot(data = (df_mean_yields.T - mean_historical_values_per_country.T.values))
-    plt.axhline(y = yield_factual - DS_historical_hybrid_weighted['Yield'].mean().values, color = 'black', linestyle = 'dashed', label = '2012 event')
-    plt.legend()
     plt.title('Local analogues of each country')
     plt.ylabel('ton/ha')
     plt.show()
     
     # Plot accumulated mean losses per country - Relative shock
     sns.barplot(data = (df_mean_yields.T / mean_historical_values_per_country.T.values - 1))
-    plt.axhline(y = yield_factual / DS_historical_hybrid_weighted['Yield'].mean().values - 1, color = 'black', linestyle = 'dashed', label = '2012 event')
-    plt.legend()
     plt.title('Counterfactuals relative shock')
     plt.show()
 
@@ -687,7 +742,7 @@ def counterfactual_generation(DS_yields, DS_mirca_country, local_factual):
     # Define the extend of the future timeseries based on the 2012 year
     DS_hybrid_country = DS_yields.where(DS_mirca_country['harvest_area'] > 0)
     # Make conversion to weighted timeseries
-    DS_projections_weighted_country = weighted_conversion(DS_hybrid_country, DS_area = DS_mirca_country)
+    DS_projections_weighted_country = weighted_prod_conversion(DS_hybrid_country, DS_area = DS_mirca_country)
     # Isolate the years with counterfactuals and remove the ones without
     DS_projections_weighted_country_counterfactual = DS_projections_weighted_country.where(DS_projections_weighted_country <= local_factual).dropna('time', how = 'all')
     return DS_projections_weighted_country_counterfactual
@@ -724,20 +779,21 @@ DS_counterfactuals_weighted_arg, number_counter_arg = counterfactuals_country_le
 # =============================================================================
 # FIG 4: Local analogues
 # =============================================================================
-fig, (ax1,ax2) = plt.subplots(nrows=2, figsize=(8,8),sharex = True )
-
-ax1.bar(x = ['US','Brazil','Argentina'], height = [number_counter_us, number_counter_br, number_counter_arg])
-ax1.set_title('a) Number of local analogues per country')
+fig, (ax1,ax2) = plt.subplots(nrows=2, figsize=(6,8),sharex = True )
+# Occurrances
+ax1.bar(x = ['US','Brazil','Argentina'], height = [number_counter_us, number_counter_br, number_counter_arg], color=['tab:blue','tab:orange','tab:green'])
+ax1.set_title('a) Number of country-level analogues')
 ax1.set_ylabel('Count')
+
 # Counterfactuals of 2012 event in absolute shock
-sns.barplot(data = (local_analogues.T - mean_historical_values_per_country.T.values), ax=ax2)
-# ax2.axhline(y = yield_factual - DS_historical_hybrid_weighted['Yield'].mean().values, color = 'black', linestyle = 'dashed', label = '2012 event')
-ax2.set_title('b) Magnitude of local analogues per country')
-ax2.set_ylabel('Yield (ton/ha)')
+sns.barplot(data = (local_analogues.T - yield_factual_2012_am.T.values), ax=ax2)
+ax2.set_title('b) Magnitude of country-level analogues')
+ax2.set_ylabel('Production anomaly (Megatonne)')
 plt.tight_layout()
-plt.savefig('paper_figures/number_analogues.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/number_analogues.png', format='png', dpi=300)
 plt.show()
 
+print('The average losses per country are ',local_analogues.T.mean().values - yield_factual_2012_am.T.values)
 
 # Supplementary information on local analogues - co-occurrence
 
@@ -795,9 +851,9 @@ fig_ipsl_85 = co_occurrences_analogues('IPSL-cm6a-lr_5-8.5', ax = ax4, title = '
 fig_ukesm_26 = co_occurrences_analogues('UKESM1-0-ll_1-2.6', ax = ax5, title = 'e)')
 fig_ukesm_85 = co_occurrences_analogues('UKESM1-0-ll_5-8.5', ax = ax6, title = 'f)')
 handles, labels = ax1.get_legend_handles_labels()
-fig.legend(handles, labels, loc=[0.1,-0.001], ncol=4, frameon=False )
+fig.legend(handles, labels, loc=[0.1,-0.004], ncol=4, frameon=False )
 plt.tight_layout()
-plt.savefig('paper_figures/co_occurrence.png', format='png', dpi=500)
+plt.savefig('paper_figures_production/co_occurrence.png', format='png', dpi=300)
 plt.show()
 
 
@@ -817,31 +873,29 @@ def clim_conditions_analogues_country(DS_area_hist, DS_area_fut, DS_counterfactu
     letters_to_country = {'US':'a) US', 'Brazil':'b) Brazil', 'Argentina':'c) Argentina'}
     
     # Conversion of historical series to weighted timeseries    
-    DS_conditions_hist_weighted_country = weighted_conversion(DS_conditions_hist, DS_area = DS_area_hist)
+    DS_conditions_hist_weighted_country = weighted_prod_conversion(DS_conditions_hist, DS_area = DS_area_hist, mode = 'yield')
     DS_conditions_2012_weighted_country = DS_conditions_hist_weighted_country.sel(time=2012)
     # DS to df
-    df_clim_hist_weighted = DS_conditions_hist_weighted_country.to_dataframe()
+    df_clim_hist_weighted = DS_conditions_hist_weighted_country.sel(time = slice(2000,2015)).to_dataframe()
     df_clim_hist_weighted['scenario'] = 'Climatology'
     df_clim_hist_weighted['model_used'] = 'Climatology'
     
     # Conversion of future series to weighted timeseries    
-    df_clim_counter_ukesm_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_585_am, DS_counterfactuals_weighted_country, 'UKESM1-0-ll_5-8.5', DS_area_fut)    
-    df_clim_counter_ukesm_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_126_am, DS_counterfactuals_weighted_country, 'UKESM1-0-ll_1-2.6', DS_area_fut)    
-    df_clim_counter_gfdl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_585_am, DS_counterfactuals_weighted_country, 'GFDL-esm4_5-8.5', DS_area_fut)    
-    df_clim_counter_gfdl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_126_am, DS_counterfactuals_weighted_country, 'GFDL-esm4_1-2.6', DS_area_fut)    
-    df_clim_counter_ipsl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_585_am, DS_counterfactuals_weighted_country, 'IPSL-cm6a-lr_5-8.5', DS_area_fut)    
-    df_clim_counter_ipsl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_126_am, DS_counterfactuals_weighted_country, 'IPSL-cm6a-lr_1-2.6', DS_area_fut)    
+    df_clim_counter_ukesm_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_585_am, DS_counterfactuals_weighted_country, 'UKESM1-0-ll_5-8.5', DS_area_fut, mode = 'yield')    
+    df_clim_counter_ukesm_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ukesm_126_am, DS_counterfactuals_weighted_country, 'UKESM1-0-ll_1-2.6', DS_area_fut, mode = 'yield')    
+    df_clim_counter_gfdl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_585_am, DS_counterfactuals_weighted_country, 'GFDL-esm4_5-8.5', DS_area_fut, mode = 'yield')    
+    df_clim_counter_gfdl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_gfdl_126_am, DS_counterfactuals_weighted_country, 'GFDL-esm4_1-2.6', DS_area_fut, mode = 'yield')    
+    df_clim_counter_ipsl_85 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_585_am, DS_counterfactuals_weighted_country, 'IPSL-cm6a-lr_5-8.5', DS_area_fut, mode = 'yield')    
+    df_clim_counter_ipsl_26 = convert_clim_weighted_ensemble(df_hybrid_fut_ipsl_126_am, DS_counterfactuals_weighted_country, 'IPSL-cm6a-lr_1-2.6', DS_area_fut, mode = 'yield')    
     
     # Merge dataframes with different names
     df_clim_counterfactuals_weighted_all_country = pd.concat([df_clim_hist_weighted, df_clim_counter_ukesm_85, df_clim_counter_ukesm_26, 
                                                       df_clim_counter_gfdl_85, df_clim_counter_gfdl_26,
                                                       df_clim_counter_ipsl_85, df_clim_counter_ipsl_26])
     
-# =============================================================================
-#     # Plot boxplots comparing the historical events, the 2012 event and the counterfactuals
-# =============================================================================
+    # Plot boxplots comparing the historical events, the 2012 event and the counterfactuals
     names = df_clim_counterfactuals_weighted_all_country.columns.drop(['scenario', 'model_used'])
-    fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_country.columns)/3)), figsize=(5, 6), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
+    fig, axes  = plt.subplots(2,int(np.ceil(len(df_clim_counterfactuals_weighted_all_country.columns)/3)), figsize=(4, 6), dpi=300, gridspec_kw=dict(height_ratios=[1,1]))
     
     for name, ax in zip(names, axes.flatten()):
         df_merge_subset = df_clim_counterfactuals_weighted_all_country[df_clim_counterfactuals_weighted_all_country.index != 2012].loc[:,[name,'scenario']]
@@ -849,10 +903,15 @@ def clim_conditions_analogues_country(DS_area_hist, DS_area_fut, DS_counterfactu
         
         if option == '2012':
             g1 = sns.boxplot(y=name, x = 'variable', hue = 'scenario', data=df_merge_subset.where(df_merge_subset['scenario'] == 'Analogues').dropna(), orient='v', ax=ax)
-            # g1 = sns.scatterplot(y=name, x = 'variable', data=df_merge_subset.where(df_merge_subset['scenario'] == 'Analogues' ), ax=ax, color = 'orange', s=60, label = 'Analogues', zorder = 20)
             ax.axhline( y = DS_conditions_2012_weighted_country[name].mean(), color = 'red', linestyle = 'dashed',linewidth =2, label = '2012 event', zorder = 19)
+            # Change the visualization to put the 2012 event as central to the plot
+            lower_boundary = DS_conditions_2012_weighted_country[name].mean() - df_merge_subset.where(df_merge_subset['scenario'] == 'Analogues').dropna()[name].min()
+            higher_boundary = df_merge_subset.where(df_merge_subset['scenario'] == 'Analogues').dropna()[name].max() - DS_conditions_2012_weighted_country[name].mean()
+            buffer_zone = max(lower_boundary, higher_boundary)
+            ax.set_ylim(DS_conditions_2012_weighted_country[name].mean() - buffer_zone, DS_conditions_2012_weighted_country[name].mean()+buffer_zone)
         elif option == 'climatology':
             g1 = sns.boxplot(y=name, x = 'variable', hue = 'scenario', data=df_merge_subset, orient='v', ax=ax)
+
         elif option == 'historical':
             g1 = sns.boxplot(y=name, x = 'variable', hue = 'scenario', data=df_merge_subset.where(df_merge_subset['scenario'] == 'Climatology').dropna(), orient='v', ax=ax)
             ax.axhline( y = DS_conditions_2012_weighted_country[name].mean(), color = 'red', linestyle = 'dashed',linewidth =2, label = '2012 event', zorder = 19)
@@ -874,9 +933,9 @@ def clim_conditions_analogues_country(DS_area_hist, DS_area_fut, DS_counterfactu
     
     if plot_legend == True:
         handles, labels = ax.get_legend_handles_labels()
-        fig.legend(handles, labels, loc=[0.2,-0.01], ncol=2, frameon=False)
+        fig.legend(handles, labels, loc=[0.0,-0.015], ncol=2, frameon=False)
         
-    plt.suptitle(f'{letters_to_country[country]}', x=0.15, y=.97)
+    plt.suptitle(f'{letters_to_country[country]}', x=0.2, y=.97)
     plt.tight_layout()
     # plt.show()
     return fig
@@ -901,13 +960,13 @@ fig_arg_draw = edit_figs(fig_arg_test)
 a = np.hstack((fig_us_draw,fig_br_draw,fig_arg_draw))
 
 mpl.use(backend)
-fig,ax = plt.subplots(figsize=(15, 6), dpi=200)
+fig,ax = plt.subplots(figsize=(12, 6), dpi=200)
 fig.subplots_adjust(0, 0, 1, 1)
 ax.set_axis_off()
 plt.tight_layout()
 plt.draw()
 ax.matshow(a)
-fig.savefig('paper_figures/clim_conditions_countries_2012.png', format='png', dpi=500)
+fig.savefig('paper_figures_production/clim_conditions_countries_2012.png', format='png', dpi=300)
 
 # =============================================================================
 # Fig SI:5: climatic conditions of the country-level analogues with respect to climatology
@@ -928,71 +987,52 @@ ax.set_axis_off()
 plt.tight_layout()
 plt.draw()
 ax.matshow(a_sup)
-fig_sup.savefig('paper_figures/fig_sup_clim_conditions_countries_climatology.png', format='png', dpi=500)
+fig_sup.savefig('paper_figures_production/fig_sup_clim_conditions_countries_climatology.png', format='png', dpi=300)
 
 
 # =============================================================================
 # Fig SI:5: climatic conditions of the country-level analogues with respect to climatology
 # =============================================================================
-fig_us_sup = clim_conditions_analogues_country(DS_mirca_us_hist, DS_mirca_us, DS_counterfactuals_weighted_us, country = 'US', option = 'historical', plot_yaxis = True)
-fig_br_sup = clim_conditions_analogues_country(DS_mirca_br_hist, DS_mirca_br, DS_counterfactuals_weighted_br, country = 'Brazil', option = 'historical', plot_legend= True)
-fig_arg_sup = clim_conditions_analogues_country(DS_mirca_arg_hist, DS_mirca_arg, DS_counterfactuals_weighted_arg, country = 'Argentina', option = 'historical')  
+fig_us_sup_2 = clim_conditions_analogues_country(DS_mirca_us_hist, DS_mirca_us, DS_counterfactuals_weighted_us, country = 'US', option = 'historical', plot_yaxis = True)
+fig_br_sup_2 = clim_conditions_analogues_country(DS_mirca_br_hist, DS_mirca_br, DS_counterfactuals_weighted_br, country = 'Brazil', option = 'historical', plot_legend= True)
+fig_arg_sup_2 = clim_conditions_analogues_country(DS_mirca_arg_hist, DS_mirca_arg, DS_counterfactuals_weighted_arg, country = 'Argentina', option = 'historical')  
 
-fig_us_sup_draw = edit_figs(fig_us_sup)
-fig_br_sup_draw = edit_figs(fig_br_sup)
-fig_arg_sup_draw = edit_figs(fig_arg_sup)
+fig_us_sup_draw_2 = edit_figs(fig_us_sup_2)
+fig_br_sup_draw_2 = edit_figs(fig_br_sup_2)
+fig_arg_sup_draw_2 = edit_figs(fig_arg_sup_2)
 
-a_sup = np.hstack((fig_us_sup_draw,fig_br_sup_draw,fig_arg_sup_draw))
+a_sup_2 = np.hstack((fig_us_sup_draw_2,fig_br_sup_draw_2,fig_arg_sup_draw_2))
 
-fig_sup, ax = plt.subplots(figsize=(15, 6), dpi=200)
-fig_sup.subplots_adjust(0, 0, 1, 1)
-ax.set_axis_off()
+fig_sup_2, ax_2 = plt.subplots(figsize=(15, 6), dpi=200)
+fig_sup_2.subplots_adjust(0, 0, 1, 1)
+ax_2.set_axis_off()
 plt.tight_layout()
 plt.draw()
-ax.matshow(a_sup)
-# fig_sup.savefig('paper_figures/fig_sup_clim_conditions_countries_climatology_past.png', format='png', dpi=500)
+ax_2.matshow(a_sup_2)
+fig_sup_2.savefig('paper_figures_production/fig_sup_clim_conditions_countries_climatology_history.png', format='png', dpi=300)
 
 #%%
 
+# DS_mirca_us_hist = DS_harvest_area_sim.where(DS_historical_hybrid_us['Yield'] > -10)
+# DS_mirca_br_hist = DS_harvest_area_sim.where(DS_historical_hybrid_br['Yield'] > -10)
+# DS_mirca_arg_hist = DS_harvest_area_sim.where(DS_historical_hybrid_arg['Yield'] > -10)
 
-#####
 
-# def counterfactuals_country_level(DS_yields, DS_mirca_country, DS_historical_hybrid_country, local_factual):
-#     DS_projections_country = DS_yields.where(DS_mirca_country['harvest_area'].mean() > 0)
-    
-#     DS_historical_hybrid_country_weight = weighted_conversion(DS_historical_hybrid_country, DS_area = DS_mirca_country)
-#     yield_factual_2012 = local_factual
-#     print(DS_historical_hybrid_country_weight.sel(time = 2012).Yield.values)
-#     print(local_factual)
-    
-#     DS_projections_country_weighted = weighted_conversion(DS_projections_country, DS_area = DS_mirca_country.mean('time'))
-#     DS_projections_country_weighted = DS_projections_country_weighted.where(DS_projections_country_weighted > 0).dropna('time', how = 'all')
-    
-#     DS_counterfactuals_weighted_country = DS_projections_country_weighted.where(DS_projections_country_weighted <= yield_factual_2012)
-#     print("Number of impact analogues per scenario for the country:", (DS_counterfactuals_weighted_country > -10).sum())
-    
-#     # Check years of counterfactuals
-#     list_counterfactuals_scenarios = []
-#     for feature in list(DS_counterfactuals_weighted_country.keys()):
-#         feature_counterfactuals = DS_counterfactuals_weighted_country[feature].dropna(dim = 'time')
-#         print(feature_counterfactuals.time.values)
-#         list_counterfactuals_scenarios.append(feature_counterfactuals.time.values)
-#         number_counter = len(np.hstack(list_counterfactuals_scenarios)) 
-#     print('total counterfactuals: ', number_counter)
-        
-#     # Create dataset with spatailly explict counterfactuals only 
-#     DS_counterfactuals_spatial_country = DS_projections_country.where(DS_counterfactuals_weighted_country > -10)
+# # Determine country level yields for future projections
+# DS_counterfactual_us = DS_counterfactuals_spatial.where(DS_historical_hybrid_us['Yield'].sel(time = 2012) > -10)
+# DS_mirca_us = DS_harvest_area_fut.where(DS_historical_hybrid_us['Yield'].sel(time = 2012) > -10)
 
-#     # Find the counterfactual shocks using a baseline as reference, either historical yields or the factual as reference
-#     DS_hybrid_counterfactuals_spatial_shock_country = DS_counterfactuals_spatial_country.dropna('time', how='all') - DS_historical_hybrid_country['Yield'].mean('time')
-#     # DS_hybrid_counterfactuals_spatial_shock_country_2012 = DS_counterfactuals_spatial_country.dropna('time', how='all') - DS_historical_hybrid_country['Yield'].sel(time = 2012)
+# DS_counterfactual_br = DS_counterfactuals_spatial.where(DS_historical_hybrid_br['Yield'].sel(time = 2012) > -10)
+# DS_mirca_br = DS_harvest_area_fut.where(DS_historical_hybrid_br['Yield'].sel(time = 2012) > -10)
 
-#     # =============================================================================
-#     # # Plots the counterfactuals per scenario 
-#     # =============================================================================
-#     # for feature in list(DS_hybrid_counterfactuals_spatial_shock_country.keys()):
-#     #     plot_2d_am_multi(DS_hybrid_counterfactuals_spatial_shock_country[feature].sel(time = DS_counterfactuals_weighted_country[feature].time.where(DS_counterfactuals_weighted_country[feature] > -10).dropna(dim = 'time')), map_title = feature )
-    
-#     # for feature in list(DS_hybrid_counterfactuals_spatial_shock_country_2012.keys()):
-#     #     plot_2d_am_multi(DS_hybrid_counterfactuals_spatial_shock_country_2012[feature].sel(time = DS_counterfactuals_weighted_country[feature].time.where(DS_counterfactuals_weighted_country[feature] > -10).dropna(dim = 'time')), map_title = feature )
-#     return DS_counterfactuals_weighted_country, number_counter
+# DS_counterfactual_arg = DS_counterfactuals_spatial.where(DS_historical_hybrid_arg['Yield'].sel(time = 2012) > -10)
+# DS_mirca_arg = DS_harvest_area_fut.where(DS_historical_hybrid_arg['Yield'].sel(time = 2012) > -10)
+
+# plot_2d_am_map(DS_counterfactual_us['UKESM1-0-ll_5-8.5'].sel(time=2042))
+# plot_2d_am_map(DS_counterfactual_br['UKESM1-0-ll_5-8.5'].sel(time=2042))
+# plot_2d_am_map(DS_counterfactual_arg['UKESM1-0-ll_5-8.5'].sel(time=2042))
+
+# # Weighted analysis historical
+# DS_historical_hybrid_us_weight = weighted_prod_conversion(DS_historical_hybrid_us, DS_area = DS_mirca_us_hist)
+# DS_historical_hybrid_br_weight = weighted_prod_conversion(DS_historical_hybrid_br, DS_area = DS_mirca_br_hist)
+# DS_historical_hybrid_arg_weight = weighted_prod_conversion(DS_historical_hybrid_arg, DS_area = DS_mirca_arg_hist)

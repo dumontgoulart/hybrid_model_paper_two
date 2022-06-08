@@ -15,13 +15,13 @@ X_train1, X_test1, y_train1, y_test1 = train_test_split(X_shuffle, y_shuffle, te
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=0)
 
-
-batch_size = [2048, 1024,512]
-epochs = [700]
-neurons_list = [256,512] # Try 512, 256
+# Try increasing the size of the nodes
+batch_size = [1024,512,256]
+epochs = [800]
+neurons_list = [512,256,128] # Try 512, 256
 learn_rate = [0.001, 0.005, 0.01]
-dropout_train = [0.1, 0.2]
-regul_values = [0, 0.00001]
+dropout_train = [0, 0.2]
+regul_values = [0]
 
 list_results = []
 for batch in batch_size:
@@ -61,7 +61,7 @@ for batch in batch_size:
                         
                         # compile the keras model
                         test_model.compile(loss='mse', optimizer=tf.keras.optimizers.Adam(learning_rate = lr), metrics=['mean_squared_error','mean_absolute_error'])
-                        callback_model = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience= 50, restore_best_weights=True)
+                        callback_model = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience= 80, restore_best_weights=True)
                         # mc = ModelCheckpoint('best_model_test_dnn2.model', monitor='val_loss', mode='min', save_best_only=True, verbose=0)
                         scikeras_regressor = Pipeline([
                             ('scaler', StandardScaler()),
@@ -91,96 +91,16 @@ for batch in batch_size:
                         print("Var score on test set:", round(explained_variance_score(y_test1, y_pred),2))
                         print("MAE on test set:", round(mean_absolute_error(y_test1, y_pred),5))
                         print("RMSE on test set:",round(mean_squared_error(y_test1, y_pred, squared=False),5))
-                        list_results.append([batch, epoch, neurons, lr,dropout_value,regul_value,best_epoch, round(r2_score(y_test1, y_pred),2),round(mean_absolute_error(y_test1, y_pred),5) ])
+                        list_results.append([batch, epoch, neurons, lr,dropout_value,regul_value,best_epoch, round(r2_score(y_test1, y_pred),3),round(mean_absolute_error(y_test1, y_pred),5),round(mean_squared_error(y_test1, y_pred, squared=False),5) ])
 
-df_results_config = pd.DataFrame(list_results, columns = ['batch', 'epoch', 'nodes', 'lr','dropout_value','regul_value','best_epoch','R2', 'MAE'])
+df_results_config = pd.DataFrame(list_results, columns = ['batch', 'epoch', 'nodes', 'lr','dropout_value','regul_value','best_epoch','R2', 'MAE', 'RMSE'])
 df_results_config.to_csv('results_hyperparameter_dnn.csv')
 
-#%%
-TEXT: 
-batch	epoch	nodes	lr	dropout_value	regul_value	best_epoch	R2	MAE
-[2048, 700, 256, 0.001, 0.1, 0, 588, 0.7, 0.23249]
-[2048, 700, 512, 0.001, 0.1, 1e-05, 347, 0.7, 0.23493]
-[2048, 700, 512, 0.001, 0.1, 0.0001, 307, 0.68, 0.24476]
-[2048, 700, 512, 0.001, 0.2, 1e-05, 402, 0.69, 0.23822]
-[2048, 700, 512, 0.01, 0.1, 0, 403, 0.7, 0.23167]
-105	1024	700	512	0.01	0.2	0.0	366	0.71	0.22949
 
-
-Results for model: batch: 1024 and epoch: 512 and neurons: 256 and learning rate : 0.005, dropout: 0.1,l2: 0 
-R2 on test set: 0.69
-Var score on test set: 0.69
-MAE on test set: 0.23901
-RMSE on test set: 0.31914
-
-Results for model: batch: 1024 and epoch: 512 and neurons: 256 and learning rate : 0.01, dropout: 0.1,l2: 0 
-R2 on test set: 0.68
-Var score on test set: 0.68
-MAE on test set: 0.24479
-RMSE on test set: 0.32426
-
-Results for model: batch: 1024 and epoch: 512 and neurons: 512 and learning rate : 0.001, dropout: 0.1,l2: 0 
-R2 on test set: 0.69
-Var score on test set: 0.69
-MAE on test set: 0.2367
-RMSE on test set: 0.3185
-
-Results for model: batch: 1024 and epoch: 700 and neurons: 512 and learning rate : 0.001, dropout: 0.1,l2: 1e-05 
-Best epoch: 300
-R2 on test set: 0.7
-Var score on test set: 0.7
-MAE on test set: 0.23468
-RMSE on test set: 0.31481
-
-Results for model: batch: 1024 and epoch: 700 and neurons: 512 and learning rate : 0.01, dropout: 0.2,l2: 0 
-Best epoch: 366
-R2 on test set: 0.71
-Var score on test set: 0.71
-MAE on test set: 0.22949
-RMSE on test set: 0.31021
-
-Results for model: batch: 512 and epoch: 700 and neurons: 256 and learning rate : 0.001, dropout: 0.1,l2: 0 
-Best epoch: 308
-R2 on test set: 0.7
-Var score on test set: 0.7
-MAE on test set: 0.23302
-RMSE on test set: 0.3132
-
-Results for model: batch: 512 and epoch: 700 and neurons: 256 and learning rate : 0.005, dropout: 0.1,l2: 0 
-Best epoch: 271
-R2 on test set: 0.7
-Var score on test set: 0.7
-MAE on test set: 0.23156
-RMSE on test set: 0.31287
-
-Results for model: batch: 512 and epoch: 700 and neurons: 256 and learning rate : 0.01, dropout: 0.1,l2: 0 
-Best epoch: 297
-R2 on test set: 0.7
-Var score on test set: 0.7
-MAE on test set: 0.23407
-RMSE on test set: 0.31524
-Results for model: batch: 512 and epoch: 700 and neurons: 512 and learning rate : 0.001, dropout: 0.2,l2: 0 
-Best epoch: 404
-R2 on test set: 0.7
-Var score on test set: 0.71
-MAE on test set: 0.22932
-RMSE on test set: 0.31066
-
-Results for model: batch: 512 and epoch: 700 and neurons: 512 and learning rate : 0.005, dropout: 0.2,l2: 0 
-Best epoch: 382
-R2 on test set: 0.7
-Var score on test set: 0.7
-MAE on test set: 0.23231
-RMSE on test set: 0.31164
-
-Results for model: batch: 512 and epoch: 700 and neurons: 512 and learning rate : 0.01, dropout: 0.2,l2: 0 
-Best epoch: 326
-R2 on test set: 0.7
-Var score on test set: 0.7
-MAE on test set: 0.23451
-RMSE on test set: 0.31455
 
 #%%
+df_results_config2 = pd.read_csv('results_hyperparameter_dnn.csv')
+
 list_1 = pd.DataFrame([[1024, 700, 512, 0.01, 0.2, 0]])
 list_2 = pd.DataFrame([[2048, 700, 512, 0.001, 0.2, 1e-05]])
 list_3 = pd.DataFrame([[512, 700, 256, 0.001, 0.1, 0]])

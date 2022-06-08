@@ -153,31 +153,30 @@ def weighted_conversion(DS, DS_area, name_ds = 'Yield'):
 
 
 #%% FUNCTION TO GENERATE PROJECTIONS BASED ON RANDOM FOREST
-def projections_generation_hybrid(model, rcp_scenario, region, hybrid_model_full, start_date, end_date, co2_scen='both', 
-                                  three_models = False, sim_round = '\Gen_Assem', shift_year = False):
-    if region == '_am' or 'am': #Write down a way of selecting each file and merging them toegether with the right windows 
-        
-        DS_clim_ext_projections_us = xr.open_mfdataset('monthly_'+ model +'_'+ rcp_scenario + "_us" +'/*.nc').sel(time=slice(start_date, end_date))
+def projections_generation_hybrid(model, rcp_scenario, region, hybrid_model_full, start_date, end_date, co2_scen='both', three_models = False, sim_round = '\Gen_Assem'):
+    if region == '_am' or 'am':  
+        #COMBINE THE THREE REGIONS WITH SOUTH AMERICA 12 MONTHS SHIFTED
+        DS_clim_ext_projections_us = xr.open_mfdataset('monthly_'+ model +'_'+ rcp_scenario + "_us" +'/*.nc')
         
         # Shift br data one year ahead
-        DS_clim_ext_projections_br = xr.open_mfdataset('monthly_'+ model +'_'+ rcp_scenario + "_br" +'/*.nc').sel(time=slice(start_date, end_date))
+        DS_clim_ext_projections_br = xr.open_mfdataset('monthly_'+ model +'_'+ rcp_scenario + "_br" +'/*.nc')
         DS_clim_ext_projections_br = DS_clim_ext_projections_br.copy().shift(time = 12) # SHIFT EPIC BR ONE YEAR FORWARD
        
         # Shift ARG data one year ahead
-        DS_clim_ext_projections_arg = xr.open_mfdataset('monthly_'+ model +'_'+ rcp_scenario + "_arg" +'/*.nc').sel(time=slice(start_date, end_date))
+        DS_clim_ext_projections_arg = xr.open_mfdataset('monthly_'+ model +'_'+ rcp_scenario + "_arg" +'/*.nc')
         DS_clim_ext_projections_arg = DS_clim_ext_projections_arg.copy().shift(time = 12) # SHIFT EPIC BR ONE YEAR FORWARD
         
         # Combine all grids
         DS_clim_ext_projections = DS_clim_ext_projections_us.combine_first(DS_clim_ext_projections_br)
         DS_clim_ext_projections = DS_clim_ext_projections.combine_first(DS_clim_ext_projections_arg)
-        # Drop the first year as it was shifted
-        # DS_clim_ext_projections = DS_clim_ext_projections.sel(time = slice('2015','2100'))
+        DS_clim_ext_projections = DS_clim_ext_projections.sel(time=slice(start_date, end_date))
         
         # Reindex to avoid missnig coordinates and dimension values
         DS_clim_ext_projections = rearrange_latlot(DS_clim_ext_projections)
 
-        plot_2d_am_map(DS_clim_ext_projections['txm'].isel(time = 0))
-        plot_2d_am_map(DS_clim_ext_projections['txm'].isel(time = -1))
+        #control
+        plot_2d_am_map(DS_clim_ext_projections['prcptot'].isel(time = 0))
+        plot_2d_am_map(DS_clim_ext_projections['prcptot'].isel(time = -1))
 
     if model == 'ukesm':
         model_full = 'ukesm1-0-ll'
@@ -186,55 +185,39 @@ def projections_generation_hybrid(model, rcp_scenario, region, hybrid_model_full
     elif model == 'ipsl':
         model_full = 'ipsl-cm6a-lr'
 
-### Climatic variables - Extreme weather    
+    ### Climatic variables
     # Clean
-    DS_clim_ext_projections = DS_clim_ext_projections.drop_vars('fd') # Always zero
-    DS_clim_ext_projections = DS_clim_ext_projections.drop_vars('id') # Always zero
-    DS_clim_ext_projections = DS_clim_ext_projections.drop_vars('time_bnds') # Always zero
-    
+    DS_clim_ext_projections = DS_clim_ext_projections.drop_vars(['fd','id','time_bnds']) # Always zero
     # Selected features
-    list_features_am = ['prcptot', 'r10mm', 'txm'  ]# 'dtr', 'tnm', 'txge35', 'tr', 'txm', 'tmm', 'tnn'
+    list_features_am = list_features # From historical time
     DS_clim_ext_projections = DS_clim_ext_projections[list_features_am]
-    # Load historical observed data to crop climatic projections of the future for similar areas:
-    # DS_y_obs_am_det = xr.open_dataset("soybean_yields_america_detrended_1978_2016.nc")
 
-    DS_clim_ext_projections = DS_clim_ext_projections.where(DS_y_obs_am_det.mean('time') >= -5.0)
-    plot_2d_am_map(DS_clim_ext_projections['txm'].mean('time'))
+    DS_clim_ext_projections = DS_clim_ext_projections.where(DS_y_obs_am_det_regul.mean('time') >= -5.0)
+    plot_2d_am_map(DS_clim_ext_projections['prcptot'].mean('time'))
   
     da_list = []
     for feature in list(DS_clim_ext_projections.keys()):
-        if (type(DS_clim_ext_projections[feature].values[0,0,0]) == type(DS_clim_ext_projections.r10mm.values[0,0,0])):
+        if (type(DS_clim_ext_projections[feature].values[0,0,0]) == np.timedelta64):
             print('Time')
             DS = timedelta_to_int(DS_clim_ext_projections, feature)
         else:
             print('Integer')
             DS = DS_clim_ext_projections[feature]
-        
         da_list.append(DS)
     
     DS_clim_ext_projections_combined = xr.merge(da_list)    
-    DS_clim_ext_projections_combined = DS_clim_ext_projections_combined.drop_vars('r10mm') # Always zero
 
-    DS_clim_ext_projections_combined.coords['lon'] = (DS_clim_ext_projections_combined.coords['lon'] + 180) % 360 - 180
-    DS_clim_ext_projections_combined = DS_clim_ext_projections_combined.sortby(DS_clim_ext_projections_combined.lon)
+    DS_clim_ext_projections_combined = rearrange_latlot(DS_clim_ext_projections_combined)
     DS_clim_ext_projections_combined = DS_clim_ext_projections_combined.reindex(lat=DS_clim_ext_projections_combined.lat[::-1])
     if len(DS_clim_ext_projections_combined.coords) >3 :
         DS_clim_ext_projections_combined = DS_clim_ext_projections_combined.drop('spatial_ref')
         
     DS_clim_ext_projections_am = DS_clim_ext_projections_combined.where( DS_chosen_calendar_am >= 0 )
-
+    
 # =============================================================================
 #     # Here we will not detrend at a yearly cycle so that we can detrend it later on at a seasonal cycle
 # =============================================================================
     DS_clim_ext_projections_am_det = DS_clim_ext_projections_am #detrend_dataset(DS_clim_ext_projections_am, mean_data = DS_exclim_am_det_clip )
-    DS_clim_ext_projections_am['prcptot'].mean(['lat','lon']).plot()
-    DS_clim_ext_projections_am_det['prcptot'].mean(['lat','lon']).plot()
-    plt.show()
-    
-    DS_clim_ext_projections_am['txm'].mean(['lat','lon']).plot()
-    DS_clim_ext_projections_am_det['txm'].mean(['lat','lon']).plot()
-    plt.title('Temperature detrending')
-    plt.show()
                  
     # =============================================================================
     # CONVERT CLIMATIC VARIABLES ACCORDING TO THE SOYBEAN GROWING SEASON PER GRIDCELL 
@@ -266,14 +249,6 @@ def projections_generation_hybrid(model, rcp_scenario, region, hybrid_model_full
     ### Select specific months
     suffixes = tuple(["_"+str(j) for j in range(3,6)])
     df_feature_proj_6mon = df_clim_proj_twoyears.loc[:,df_clim_proj_twoyears.columns.str.endswith(suffixes)]
-    
-    # Shift 1 year
-    end_year = 2100
-    if shift_year == True:
-        print('end of year shifted',df_feature_proj_6mon.index.levels[2])
-    #     df_feature_proj_6mon.index = df_feature_proj_6mon.index.set_levels(df_feature_proj_6mon.index.levels[2] + 1, level=2)
-    #     end_year = 2099
-    #     print(df_feature_proj_6mon.index.levels[2])
     
     df_feature_proj_6mon = df_feature_proj_6mon.rename_axis(index={'year':'time'})
     df_feature_proj_6mon = df_feature_proj_6mon.reorder_levels(['time','lat','lon']).sort_index()
@@ -337,11 +312,11 @@ def projections_generation_hybrid(model, rcp_scenario, region, hybrid_model_full
             DS_y_epic_proj_am = DS_y_epic_proj_am.sortby(['time','lat','lon'])
             DS_y_epic_proj_am = rearrange_latlot(DS_y_epic_proj_am)
             
-            DS_y_epic_proj_am = DS_y_epic_proj_am.where(DS_y_epic_am_det.mean('time') >= -5.0 )
+            DS_y_epic_proj_am = DS_y_epic_proj_am.where(DS_y_epic_am_det_regul.mean('time') >= -5.0 )
             
         else:
             DS_y_epic_proj = xr.open_dataset("epic-iiasa_"+ model_full +"_w5e5_"+rcp_scenario+"_2015soc_"+co2_scenario+"_yield-soy-noirr_global_annual_2015_2100.nc", decode_times=False)
-            DS_y_epic_proj_am = DS_y_epic_proj.where(DS_y_epic_am_det.mean('time') >= -5.0 )
+            DS_y_epic_proj_am = DS_y_epic_proj.where(DS_y_epic_am_det_regul.mean('time') >= -5.0 )
                     
         return DS_y_epic_proj_am, df_feature_proj_6mon
 # =============================================================================    
@@ -356,7 +331,7 @@ def projections_generation_hybrid(model, rcp_scenario, region, hybrid_model_full
 
         
 #%% HYBRID model projections
-def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, rcp_scenario, hybrid_model_full, region = "_am", co2_scen = 'Default', start_date='01-01-2015', end_date='31-12-2100'):
+def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, rcp_scenario, hybrid_model_full, region = "_am", co2_scen = 'Default'):
     end_year = 2100
     
     if model == 'ukesm':
@@ -370,7 +345,7 @@ def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, r
     DS_detrended, DS_fit = detrend_dim_2(DS_y_epic_proj_am['yield-soy-noirr'], 'time')
     DS_fit = xr.DataArray( DS_fit + DS_detrended.mean(['time']), name= DS_y_epic_proj_am['yield-soy-noirr'].name, attrs = DS_y_epic_proj_am['yield-soy-noirr'].attrs)
 
-    DS_y_epic_proj_am_det = xr.DataArray( DS_detrended + DS_y_epic_am_det.mean('time'), name= DS_y_epic_proj_am['yield-soy-noirr'].name, attrs = DS_y_epic_proj_am['yield-soy-noirr'].attrs)
+    DS_y_epic_proj_am_det = xr.DataArray( DS_detrended + DS_y_epic_am_det_regul.sel(time = slice(2010,2015).mean('time'), name= DS_y_epic_proj_am['yield-soy-noirr'].name, attrs = DS_y_epic_proj_am['yield-soy-noirr'].attrs)
     
     DS_y_epic_proj_am['yield-soy-noirr'].mean(['lat', 'lon']).plot(label = 'EPIC')
     DS_fit.mean(['lat', 'lon']).plot(label = 'EPIC trend')
@@ -387,11 +362,11 @@ def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, r
     df_feature_proj_6mon2 = df_feature_proj_6mon2.where(df_y_epic_proj_am['yield-soy-noirr'] > -100).dropna()
     
     ####   Prepare data for hybrid model
-    df_hybrid_proj_test_2 = pd.concat([df_y_epic_proj_am, df_feature_proj_6mon2], axis = 1 ).query(f"time>=2016 and time <= {end_year}")
+    df_input_hybrid_fut_test_2 = pd.concat([df_y_epic_proj_am, df_feature_proj_6mon2], axis = 1 ).query(f"time>=2016 and time <= {end_year}")
     
     # Predicting hybrid results
     df_prediction_proj_2 = df_y_epic_proj_am.query(f"time>=2016 and time <= {end_year}").copy() 
-    predic_model_test_2 = hybrid_model_full.predict(df_hybrid_proj_test_2.query(f"time>=2016 and time <= {end_year}")).copy()
+    predic_model_test_2 = hybrid_model_full.predict(df_input_hybrid_fut_test_2.query(f"time>=2016 and time <= {end_year}")).copy()
     df_prediction_proj_2.loc[:,'yield-soy-noirr'] = predic_model_test_2
     
     DS_hybrid_proj_2 = xr.Dataset.from_dataframe(df_prediction_proj_2)
@@ -429,15 +404,19 @@ def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, r
     DS_pred_clim_proj = xr.Dataset.from_dataframe(df_pred_clim_proj_test)
     DS_pred_clim_proj = rearrange_latlot(DS_pred_clim_proj)
 
-    #%% Full analysis
+# =============================================================================
+#     #%% Full analysis
+# =============================================================================
     
     # WEIGHTING SCHEME
     DS_mirca_test = xr.open_dataset("../../paper_hybrid_agri/data/americas_mask_ha.nc", decode_times=False).rename({'latitude': 'lat', 'longitude': 'lon'})
     DS_mirca_test = DS_mirca_test.rename({'annual_area_harvested_rfc_crop08_ha_30mn':'harvest_area'}).where(DS_hybrid_proj_2['yield-soy-noirr'].mean('time')>-2)
+    # TEST WITH SPAM 2010
+    DS_mirca_test = xr.open_dataset("../../paper_hybrid_agri/data/soy_harvest_spam_native_05x05.nc", decode_times=False)
 
     #### HARVEST DATA
     DS_harvest_area_globiom = xr.load_dataset("../../paper_hybrid_agri/data/soybean_harvest_area_calculated_americas_hg.nc", decode_times=False)
-    DS_harvest_area_globiom = DS_harvest_area_globiom.sel(time=slice(2014,2016)).mean(['time'])
+    DS_harvest_area_globiom = DS_harvest_area_globiom.sel(time=2012)
     DS_harvest_area_globiom = DS_harvest_area_globiom.where(DS_mirca_test['harvest_area'] > 0 )
     DS_harvest_area_globiom = rearrange_latlot(DS_harvest_area_globiom)
     # plot_2d_am_map(DS_harvest_area_globiom['harvest_area'])
@@ -448,27 +427,27 @@ def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, r
     DS_epic_pure_weighted = weighted_conversion(DS_y_epic_proj_am_det, DS_harvest_area_globiom, name_ds = 'yield-soy-noirr')
     DS_epic_pure_weighted = DS_epic_pure_weighted.sel(time = slice(2016,2099))
     
-    plt.plot(DS_hybrid_proj_2['yield-soy-noirr'].mean(['lat','lon']), label = 'unweighted')
-    plt.plot(DS_hybrid_weighted['yield-soy-noirr'], label = 'weighted')
-    plt.ylabel('yield')
-    plt.xlabel('years')
-    plt.title('Difference weighted and non-weighted')
-    plt.legend()
-    plt.show()
+    # plt.plot(DS_hybrid_proj_2['yield-soy-noirr'].mean(['lat','lon']), label = 'unweighted')
+    # plt.plot(DS_hybrid_weighted['yield-soy-noirr'], label = 'weighted')
+    # plt.ylabel('yield')
+    # plt.xlabel('years')
+    # plt.title('Difference weighted and non-weighted')
+    # plt.legend()
+    # plt.show()
             
-    plt.plot(DS_y_epic_proj_am_det.time.values, DS_y_epic_proj_am_det.mean(['lat','lon']), label = 'Pure EPIC')
-    plt.plot(DS_pred_epic_proj.time.values, DS_pred_epic_proj["yield-soy-noirr"].mean(['lat','lon']), label = 'EPIC-RF')
-    plt.plot(DS_hybrid_proj_2.time.values, DS_hybrid_proj_2["yield-soy-noirr"].mean(['lat','lon']), label = 'Hybrid-RF')
-    plt.title('Non-weighted comparison')
-    plt.legend()
-    plt.show()
+    # plt.plot(DS_y_epic_proj_am_det.time.values, DS_y_epic_proj_am_det.mean(['lat','lon']), label = 'Pure EPIC')
+    # plt.plot(DS_pred_epic_proj.time.values, DS_pred_epic_proj["yield-soy-noirr"].mean(['lat','lon']), label = 'EPIC-RF')
+    # plt.plot(DS_hybrid_proj_2.time.values, DS_hybrid_proj_2["yield-soy-noirr"].mean(['lat','lon']), label = 'Hybrid-RF')
+    # plt.title('Non-weighted comparison')
+    # plt.legend()
+    # # plt.show()
     
-    plt.plot(DS_y_epic_proj_am_det.time.values, DS_y_epic_proj_am_det.mean(['lat','lon']), label = 'Pure EPIC')
-    plt.plot(DS_pred_epic_proj.time.values, DS_epic_weighted["yield-soy-noirr"], label = 'EPIC-RF')
-    plt.plot(DS_hybrid_proj_2.time.values, DS_hybrid_weighted['yield-soy-noirr'], label = 'Hybrid-RF')
-    plt.title('Weighted comparison')
-    plt.legend()
-    plt.show()
+    # plt.plot(DS_y_epic_proj_am_det.time.values, DS_y_epic_proj_am_det.mean(['lat','lon']), label = 'Pure EPIC')
+    # plt.plot(DS_pred_epic_proj.time.values, DS_epic_weighted["yield-soy-noirr"], label = 'EPIC-RF')
+    # plt.plot(DS_hybrid_proj_2.time.values, DS_hybrid_weighted['yield-soy-noirr'], label = 'Hybrid-RF')
+    # plt.title('Weighted comparison')
+    # plt.legend()
+    # plt.show()
     
     # plt.figure(figsize=(7,7), dpi=250) #plot clusters
     plt.plot(DS_pred_epic_proj.time.values, DS_epic_weighted["yield-soy-noirr"]/np.mean(DS_epic_weighted["yield-soy-noirr"]), label = 'EPIC-RF')
@@ -496,21 +475,73 @@ def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, r
     # plot_2d_am_map(DS_hybrid_proj_2['yield-soy-noirr'].sel(time=weighted_timeseries_min)/DS_hybrid_proj_2["yield-soy-noirr"].mean('time') - DS_y_epic_proj_am_det.sel(time=weighted_timeseries_min)/DS_y_epic_proj_am_det.mean('time'), title = 'Difference Hybrid and EPIC')
     
     ### Save the data
-    df_hybrid_proj_test_2.to_csv('output_models'+region +'/climatic_projections/model_input_'+model_full+'_'+rcp_scenario+'_'+co2_scen+'_2015_2100.csv')
+    df_input_hybrid_fut_test_2.to_csv('output_models'+region +'/climatic_projections/model_input_'+model_full+'_'+rcp_scenario+'_'+co2_scen+'_2015_2100.csv')
     
     DS_hybrid_proj_2.to_netcdf('output_models'+region +'/hybrid_'+model_full+'_'+rcp_scenario+'_'+co2_scen+'_yield_soybean_2015_2100.nc')
     DS_pred_clim_proj.to_netcdf('output_models'+region +'/clim_'+model_full+'_'+rcp_scenario+'_'+co2_scen+'_yield_soybean_2015_2100.nc')
     DS_pred_epic_proj.to_netcdf('output_models'+region +'/epic_'+model_full+'_'+rcp_scenario+'_'+co2_scen+'_yield_soybean_2015_2100.nc')
-    
+    plot_2d_am_map(DS_hybrid_proj_2['yield-soy-noirr'].mean('time'))
+
     ### Save trends
-    DS_hybrid_proj_trend = DS_hybrid_proj_2 + DS_fit - DS_fit.sel(time = 2016) 
+    DS_hybrid_proj_trend = DS_hybrid_proj_2 + DS_fit - DS_fit.sel(time = slice(2010,2015).mean('time'))
     DS_hybrid_proj_trend.to_netcdf('output_models'+region +'/hybrid_trends/hybrid_trend_'+model_full+'_'+rcp_scenario+'_'+co2_scen+'_yield_soybean_2015_2100.nc')
 
     
-    df_hybrid_proj_test_2 = df_hybrid_proj_test_2.rename(columns = {'yield-soy-noirr':f'yield-soy-noirr_{co2_scen}'})
+
+# =============================================================================
+# GLOBIOM SHIFTERS
+# =============================================================================
+   
+    # def local_minima_30years(dataset, no_cycles = 3, weights = 'YES'):
+
+    #     cycle_period = (( dataset.time.max() - dataset.time.min() ) // no_cycles ) + 1
+    #     year0 = dataset.time[0].values
+        
+    #     list_shifters_cycle = []
+    #     for cycle in range(no_cycles):
+            
+    #         dataset_cycle = dataset.sel( time = slice( year0 + cycle_period * cycle, year0 -1 + cycle_period * ( cycle+1 ) ) )
+            
+    #         if weights == 'NO':
+    
+    #             year_min = dataset_cycle.time[0].values + dataset_cycle['yield-soy-noirr'].mean(['lat','lon']).argmin(dim='time').values
+    #             ds_local_minima = dataset_cycle.sel(time=year_min)
+    #             ds_shifter_cycle = ds_local_minima / dataset_cycle.mean(['time'])
+    #             print('year_min:',dataset_cycle.time[0].values, 'year_max:',dataset_cycle.time[-1].values, 'min_pos',year_min, 'shifter', list(ds_shifter_cycle.to_dataframe().mean().values))
+                
+    #         elif weights == 'YES':
+                
+    #             DS_weighted_cycle = weighted_conversion(dataset, DS_harvest_area_globiom, name_ds = 'yield-soy-noirr')
+    #             dataset_cycle_weight = DS_weighted_cycle.sel( time = slice( year0 + cycle_period * cycle, year0 - 1 + cycle_period * ( cycle+1 ) ) )
+     
+    #             year_min = dataset_cycle_weight.time[0].values + dataset_cycle_weight['yield-soy-noirr'].argmin(dim='time').values
+    #             ds_local_minima = dataset_cycle.sel(time=year_min)
+    #             ds_shifter_cycle = ds_local_minima / dataset_cycle.mean(['time'])     
+                
+    #             # Reindex to avoid missnig coordinates and dimension values
+    #             new_lat = np.arange(ds_shifter_cycle.lat[0], ds_shifter_cycle.lat[-1], 0.5)
+    #             new_lon = np.arange(ds_shifter_cycle.lon[0], ds_shifter_cycle.lon[-1], 0.5)
+    #             ds_shifter_cycle = ds_shifter_cycle.reindex({'lat':new_lat})
+    #             ds_shifter_cycle = ds_shifter_cycle.reindex({'lon':new_lon})
+                
+    #             print('year_min:', dataset_cycle_weight.time[0].values, 'year_max:',dataset_cycle_weight.time[-1].values, '/ Minimum year:',year_min, '/ Shifter value:', dataset_cycle_weight['yield-soy-noirr'].min(dim='time').values/dataset_cycle_weight['yield-soy-noirr'].mean(dim='time').values)
+                
+    #         list_shifters_cycle.append(ds_shifter_cycle)
+
+    #     return list_shifters_cycle
+            
+    # list_test = local_minima_30years(DS_hybrid_proj_2, weights = 'YES') 
+    
+    # sim_round = '/scenarios_forum'
+    # # Hybrid model
+    # list_test[0].to_netcdf('output_shocks'+region +sim_round +"/hybrid_"+model_full+'_'+rcp_scenario+"_"+co2_scen+"_yield_soybean_shift_2017-2044.nc")
+    # list_test[1].to_netcdf('output_shocks'+region +sim_round +"/hybrid_"+model_full+'_'+rcp_scenario+"_"+co2_scen+"_yield_soybean_shift_2044-2071.nc")
+    # list_test[2].to_netcdf('output_shocks'+region + sim_round +"/hybrid_"+model_full+'_'+rcp_scenario+"_"+co2_scen+"_yield_soybean_shift_2071-2098.nc")
+    
+    df_input_hybrid_fut_test_2 = df_input_hybrid_fut_test_2.rename(columns = {'yield-soy-noirr':f'yield-soy-noirr_{co2_scen}'})
     df_prediction_proj_2 = df_prediction_proj_2.rename(columns = {'yield-soy-noirr':f'yield-soy-noirr_{co2_scen}'})
         
-    return df_hybrid_proj_test_2, df_prediction_proj_2            
+    return df_input_hybrid_fut_test_2, df_prediction_proj_2            
 
 #%% START MAIN SCRIPT
 
@@ -539,7 +570,6 @@ def hybrid_predictions_future(DS_y_epic_proj_am, df_feature_proj_6mon2, model, r
 # Runs future scenarios
 model_to_be_used = full_model_hyb_am2 #full_model_hyb # or: full_model_hyb_am2
 co2_scen = 'default' # 'both'
-
 # =============================================================================
 # First function - data preparation for future scenarios - dynamic calendar and more
 # =============================================================================# UKESM model
@@ -558,16 +588,16 @@ DS_y_epic_proj_ipsl_126_am, df_feature_proj_ipsl_126_am = projections_generation
 # Second function - hybrid prediction 
 # =============================================================================
 # UKESM model
-df_hybrid_proj_ukesm_585_am, df_prediction_proj_ukesm_585_am = hybrid_predictions_future(DS_y_epic_proj_ukesm_585_am, df_feature_proj_ukesm_585_am, model = 'ukesm', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-df_hybrid_proj_ukesm_126_am, df_prediction_proj_ukesm_126_am = hybrid_predictions_future(DS_y_epic_proj_ukesm_126_am, df_feature_proj_ukesm_126_am, model = 'ukesm', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+df_input_hybrid_fut_ukesm_585_am, df_prediction_proj_ukesm_585_am = hybrid_predictions_future(DS_y_epic_proj_ukesm_585_am, df_feature_proj_ukesm_585_am, model = 'ukesm', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = full_model_hyb_am2, co2_scen = co2_scen)
+df_input_hybrid_fut_ukesm_126_am, df_prediction_proj_ukesm_126_am = hybrid_predictions_future(DS_y_epic_proj_ukesm_126_am, df_feature_proj_ukesm_126_am, model = 'ukesm', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = full_model_hyb_am2, co2_scen = co2_scen)
 
 # GFDL model
-df_hybrid_proj_gfdl_585_am, df_prediction_proj_gfdl_585_am = hybrid_predictions_future(DS_y_epic_proj_gfdl_585_am, df_feature_proj_gfdl_585_am, model = 'gfdl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-df_hybrid_proj_gfdl_126_am, df_prediction_proj_gfdl_126_am = hybrid_predictions_future(DS_y_epic_proj_gfdl_126_am, df_feature_proj_gfdl_126_am, model = 'gfdl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+df_input_hybrid_fut_gfdl_585_am, df_prediction_proj_gfdl_585_am = hybrid_predictions_future(DS_y_epic_proj_gfdl_585_am, df_feature_proj_gfdl_585_am, model = 'gfdl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = full_model_hyb_am2, co2_scen = co2_scen)
+df_input_hybrid_fut_gfdl_126_am, df_prediction_proj_gfdl_126_am = hybrid_predictions_future(DS_y_epic_proj_gfdl_126_am, df_feature_proj_gfdl_126_am, model = 'gfdl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = full_model_hyb_am2, co2_scen = co2_scen)
 
 # IPSL model
-df_hybrid_proj_ipsl_585_am, df_prediction_proj_ipsl_585_am = hybrid_predictions_future(DS_y_epic_proj_ipsl_585_am, df_feature_proj_ipsl_585_am, model = 'ipsl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-df_hybrid_proj_ipsl_126_am, df_prediction_proj_ipsl_126_am = hybrid_predictions_future(DS_y_epic_proj_ipsl_126_am, df_feature_proj_ipsl_126_am, model = 'ipsl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+df_input_hybrid_fut_ipsl_585_am, df_prediction_proj_ipsl_585_am = hybrid_predictions_future(DS_y_epic_proj_ipsl_585_am, df_feature_proj_ipsl_585_am, model = 'ipsl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = full_model_hyb_am2, co2_scen = co2_scen)
+df_input_hybrid_fut_ipsl_126_am, df_prediction_proj_ipsl_126_am = hybrid_predictions_future(DS_y_epic_proj_ipsl_126_am, df_feature_proj_ipsl_126_am, model = 'ipsl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = full_model_hyb_am2, co2_scen = co2_scen)
 
 
 
@@ -577,250 +607,243 @@ df_hybrid_proj_ipsl_126_am, df_prediction_proj_ipsl_126_am = hybrid_predictions_
 
 
 
+# # #%%
+# # # UKESM model
+# # df_input_hybrid_fut_ukesm_585_am, df_prediction_proj_ukesm_585_am = projections_generation_hybrid(model = 'ukesm', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+# # df_input_hybrid_fut_ukesm_126_am, df_prediction_proj_ukesm_126_am = projections_generation_hybrid(model = 'ukesm', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+
+# # # GFDL model
+# # df_input_hybrid_fut_gfdl_585_am, df_prediction_proj_gfdl_585_am = projections_generation_hybrid(model = 'gfdl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+# # df_input_hybrid_fut_gfdl_126_am, df_prediction_proj_gfdl_126_am = projections_generation_hybrid(model = 'gfdl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+
+# # # IPSL model
+# # df_input_hybrid_fut_ipsl_585_am, df_prediction_proj_ipsl_585_am = projections_generation_hybrid(model = 'ipsl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+# # df_input_hybrid_fut_ipsl_126_am, df_prediction_proj_ipsl_126_am = projections_generation_hybrid(model = 'ipsl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
 
 
+# # #%% TEST partial dependence plot for out of calibration zone cases - 2088 should be extreme
 
+# # load future prodictions
+# df_predict_fut = df_prediction_proj_ukesm_585_am.iloc[:,[0]].copy() # Use 2015 case
+# df_predict_fut = df_predict_fut.rename(columns={'yield-soy-noirr_default':'yield-soy-noirr'})
 
+# df_proj_fut = df_input_hybrid_fut_ukesm_585_am.rename(columns={'yield-soy-noirr_default':'yield-soy-noirr'})
+# df_proj_fut =  df_proj_fut[ ['yield-soy-noirr'] + [ col for col in df_proj_fut.columns if col != 'yield-soy-noirr' ] ]
+# # df_proj_fut = df_proj_fut.drop(columns='yield-soy-noirr_default')
 
+# df_hybrid_am_test = df_input_hybrid_am.copy()
+# df_hybrid_am_test = df_hybrid_am_test.rename(columns={'yield':'yield-soy-noirr'})
 
+# # EPIC
+# plt.plot(df_hybrid_am_test['yield-soy-noirr'].groupby('time').mean(), label = 'History')
+# plt.plot(df_proj_fut['yield-soy-noirr'].groupby('time').mean(), label = 'Future')
+# plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
+# plt.title('EPIC predictions')
+# plt.legend()
+# plt.show()
 
-#%%
-# UKESM model
-df_hybrid_proj_ukesm_585_am, df_prediction_proj_ukesm_585_am = projections_generation_hybrid(model = 'ukesm', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-df_hybrid_proj_ukesm_126_am, df_prediction_proj_ukesm_126_am = projections_generation_hybrid(model = 'ukesm', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+# # TMX
+# plt.plot(df_hybrid_am_test['txm_4'].groupby('time').mean(), label = 'History')
+# plt.plot(df_proj_fut['txm_4'].groupby('time').mean(), label = 'Future')
+# plt.title('TXM_4 predictions')
+# plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
+# plt.axvline(df_proj_fut['txm_4'].groupby('time').mean().idxmax(), c = 'r', linestyle = 'dashed')
+# plt.legend()
+# plt.show()
 
-# GFDL model
-df_hybrid_proj_gfdl_585_am, df_prediction_proj_gfdl_585_am = projections_generation_hybrid(model = 'gfdl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-df_hybrid_proj_gfdl_126_am, df_prediction_proj_gfdl_126_am = projections_generation_hybrid(model = 'gfdl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
+# # HYBRID
+# plt.plot(df_predict_hyb_am['Yield'].groupby('time').mean(), label = 'History')
+# plt.plot(df_predict_fut['yield-soy-noirr'].groupby('time').mean(), label = 'Future')
+# plt.title('Hybrid predictions')
+# plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
+# plt.legend()
+# plt.show()
 
-# IPSL model
-df_hybrid_proj_ipsl_585_am, df_prediction_proj_ipsl_585_am = projections_generation_hybrid(model = 'ipsl', rcp_scenario = 'ssp585', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-df_hybrid_proj_ipsl_126_am, df_prediction_proj_ipsl_126_am = projections_generation_hybrid(model = 'ipsl', rcp_scenario = 'ssp126', region = "_am", hybrid_model_full = model_to_be_used, start_date='01-01-2015', end_date='31-12-2100', co2_scen = co2_scen)
-
-
-#%% TEST partial dependence plot for out of calibration zone cases - 2088 should be extreme
-
-# load future prodictions
-df_predict_fut = df_prediction_proj_ukesm_585_am.iloc[:,[0]].copy() # Use 2015 case
-df_predict_fut = df_predict_fut.rename(columns={'yield-soy-noirr_default':'yield-soy-noirr'})
-
-df_proj_fut = df_hybrid_proj_ukesm_585_am.rename(columns={'yield-soy-noirr_default':'yield-soy-noirr'})
-df_proj_fut =  df_proj_fut[ ['yield-soy-noirr'] + [ col for col in df_proj_fut.columns if col != 'yield-soy-noirr' ] ]
-# df_proj_fut = df_proj_fut.drop(columns='yield-soy-noirr_default')
-
-df_hybrid_am_test = df_input_hybrid_am.copy()
-df_hybrid_am_test = df_hybrid_am_test.rename(columns={'yield':'yield-soy-noirr'})
-
-# EPIC
-plt.plot(df_hybrid_am_test['yield-soy-noirr'].groupby('time').mean(), label = 'History')
-plt.plot(df_proj_fut['yield-soy-noirr'].groupby('time').mean(), label = 'Future')
-plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
-plt.title('EPIC predictions')
-plt.legend()
-plt.show()
-
-# TMX
-plt.plot(df_hybrid_am_test['txm_4'].groupby('time').mean(), label = 'History')
-plt.plot(df_proj_fut['txm_4'].groupby('time').mean(), label = 'Future')
-plt.title('TXM_4 predictions')
-plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
-plt.axvline(df_proj_fut['txm_4'].groupby('time').mean().idxmax(), c = 'r', linestyle = 'dashed')
-plt.legend()
-plt.show()
-
-# HYBRID
-plt.plot(df_predict_hyb_am['Yield'].groupby('time').mean(), label = 'History')
-plt.plot(df_predict_fut['yield-soy-noirr'].groupby('time').mean(), label = 'Future')
-plt.title('Hybrid predictions')
-plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
-plt.legend()
-plt.show()
-
-# Plots for points distribution
-for feature in df_proj_fut.columns:
-    df_clim_extrapolated = df_proj_fut[feature].where(df_proj_fut[feature] > df_hybrid_am_test[feature].max()).dropna()
-    df_y_extrapolated = df_predict_fut['yield-soy-noirr'].where(df_proj_fut[feature] > df_hybrid_am_test[feature].max()).dropna()
-
-    plt.scatter(df_hybrid_am_test[feature], df_predict_hyb_am['Yield'], color = 'k', label = 'History')    
-    plt.scatter(df_proj_fut[feature], df_predict_fut['yield-soy-noirr'], alpha = 0.8, label = 'Projection')
-    sns.regplot(df_hybrid_am_test[feature], df_predict_hyb_am['Yield'], color = 'k', label = 'History', scatter = False)    
-    sns.regplot(df_proj_fut[feature], df_predict_fut['yield-soy-noirr'], label = 'Projection', scatter = False)    
-    plt.scatter(df_clim_extrapolated, df_y_extrapolated, alpha = 0.8, label = 'Extrapolation')
-    plt.legend(loc="upper right")
-    plt.title(f'Scatterplot of {feature} for GCM-RCPs')
-    plt.ylabel('Yield')
-    if feature in ['txm_3','txm_4','txm_5']:
-        x_label = 'Temperature (°C)'
-    elif feature in ['prcptot_2', 'prcptot_3', 'prcptot_4', 'prcptot_5']:
-        x_label = 'Precipitation (mm/month)'
-    else:
-        x_label = 'Yield (ton/ha)'
-          
-    plt.xlabel(x_label)
-    plt.show()
-
-for feature in df_proj_fut.columns:   
-    sns.kdeplot(df_hybrid_am_test[feature],fill=True, alpha = 0.3, label = 'History')
-    sns.kdeplot(df_proj_fut[feature],fill=True, alpha = 0.3, label = 'Proj')
-    print('hist', np.round(df_hybrid_am_test[feature].mean(), 3), 'fut', np.round(df_proj_fut[feature].mean(),3))
-    plt.legend()
-    plt.show()
-    
-    plt.plot(df_hybrid_am_test[feature].groupby('time').mean(), label = 'History')
-    plt.plot(df_proj_fut[feature].groupby('time').mean(), label = 'Future')
-    plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
-    plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().nsmallest(5).index[1], linestyle = 'dashed')
-    plt.axvline(df_predict_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), color = 'red',linestyle = 'dashed')
-    plt.title(f'{feature} predictions')
-    plt.legend()
-    plt.show()
-    
-sns.kdeplot(df_predict_hyb_am['Yield'], fill=True, alpha = 0.3, label = 'History')
-sns.kdeplot(df_predict_fut['yield-soy-noirr'],fill=True, alpha = 0.3, label = 'Proj')
-plt.title('Hybrid predictions')
-plt.legend()
-plt.show()
-
-plt.plot(df_predict_hyb_am['Yield'].groupby('time').mean(), label = 'History')
-plt.plot(df_predict_fut['yield-soy-noirr'].groupby('time').mean(), label = 'Future')
-plt.title('Hybrid predictions')
-plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
-plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().nsmallest(5).index[1], linestyle = 'dashed')
-plt.legend()
-plt.show()
-
+# # Plots for points distribution
 # for feature in df_proj_fut.columns:
-#     df_clim_extrapolated = df_proj_fut[feature].where(df_proj_fut[feature] < df_hybrid_am_test[feature].min()).dropna()
-#     df_y_extrapolated = df_predict_fut['yield-soy-noirr'].where(df_proj_fut[feature] < df_hybrid_am_test[feature].min()).dropna()
+#     df_clim_extrapolated = df_proj_fut[feature].where(df_proj_fut[feature] > df_hybrid_am_test[feature].max()).dropna()
+#     df_y_extrapolated = df_predict_fut['yield-soy-noirr'].where(df_proj_fut[feature] > df_hybrid_am_test[feature].max()).dropna()
 
-#     plt.scatter(df_hybrid_am_test[feature], df_predict_hyb_am['Yield'], color = 'k')    
-#     plt.scatter(df_proj_fut[feature], df_predict_fut['yield-soy-noirr'], alpha = 0.8)
-#     plt.hlines(df_predict_hyb_am['Yield'].mean(), df_hybrid_am_test[feature].min(), df_hybrid_am_test[feature].max(), color = 'k')
-#     plt.scatter(df_clim_extrapolated, df_y_extrapolated, alpha = 0.8)
-#     # plt.legend(loc="upper right")
+#     plt.scatter(df_hybrid_am_test[feature], df_predict_hyb_am['Yield'], color = 'k', label = 'History')    
+#     plt.scatter(df_proj_fut[feature], df_predict_fut['yield-soy-noirr'], alpha = 0.8, label = 'Projection')
+#     sns.regplot(df_hybrid_am_test[feature], df_predict_hyb_am['Yield'], color = 'k', label = 'History', scatter = False)    
+#     sns.regplot(df_proj_fut[feature], df_predict_fut['yield-soy-noirr'], label = 'Projection', scatter = False)    
+#     plt.scatter(df_clim_extrapolated, df_y_extrapolated, alpha = 0.8, label = 'Extrapolation')
+#     plt.legend(loc="upper right")
 #     plt.title(f'Scatterplot of {feature} for GCM-RCPs')
 #     plt.ylabel('Yield')
-#     if feature in ['tnx_3','tnx_4','tnx_5']:
+#     if feature in ['txm_3','txm_4','txm_5']:
 #         x_label = 'Temperature (°C)'
-#     elif feature in ['prcptot_3', 'prcptot_4', 'prcptot_5']:
+#     elif feature in ['prcptot_2', 'prcptot_3', 'prcptot_4', 'prcptot_5']:
 #         x_label = 'Precipitation (mm/month)'
 #     else:
 #         x_label = 'Yield (ton/ha)'
           
 #     plt.xlabel(x_label)
 #     plt.show()
+
+# for feature in df_proj_fut.columns:   
+#     sns.kdeplot(df_hybrid_am_test[feature],fill=True, alpha = 0.3, label = 'History')
+#     sns.kdeplot(df_proj_fut[feature],fill=True, alpha = 0.3, label = 'Proj')
+#     print('hist', np.round(df_hybrid_am_test[feature].mean(), 3), 'fut', np.round(df_proj_fut[feature].mean(),3))
+#     plt.legend()
+#     plt.show()
+    
+#     plt.plot(df_hybrid_am_test[feature].groupby('time').mean(), label = 'History')
+#     plt.plot(df_proj_fut[feature].groupby('time').mean(), label = 'Future')
+#     plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
+#     plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().nsmallest(5).index[1], linestyle = 'dashed')
+#     plt.axvline(df_predict_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), color = 'red',linestyle = 'dashed')
+#     plt.title(f'{feature} predictions')
+#     plt.legend()
+#     plt.show()
+    
+# sns.kdeplot(df_predict_hyb_am['Yield'], fill=True, alpha = 0.3, label = 'History')
+# sns.kdeplot(df_predict_fut['yield-soy-noirr'],fill=True, alpha = 0.3, label = 'Proj')
+# plt.title('Hybrid predictions')
+# plt.legend()
+# plt.show()
+
+# plt.plot(df_predict_hyb_am['Yield'].groupby('time').mean(), label = 'History')
+# plt.plot(df_predict_fut['yield-soy-noirr'].groupby('time').mean(), label = 'Future')
+# plt.title('Hybrid predictions')
+# plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().idxmin(), linestyle = 'dashed')
+# plt.axvline(df_proj_fut['yield-soy-noirr'].groupby('time').mean().nsmallest(5).index[1], linestyle = 'dashed')
+# plt.legend()
+# plt.show()
+
+# # for feature in df_proj_fut.columns:
+# #     df_clim_extrapolated = df_proj_fut[feature].where(df_proj_fut[feature] < df_hybrid_am_test[feature].min()).dropna()
+# #     df_y_extrapolated = df_predict_fut['yield-soy-noirr'].where(df_proj_fut[feature] < df_hybrid_am_test[feature].min()).dropna()
+
+# #     plt.scatter(df_hybrid_am_test[feature], df_predict_hyb_am['Yield'], color = 'k')    
+# #     plt.scatter(df_proj_fut[feature], df_predict_fut['yield-soy-noirr'], alpha = 0.8)
+# #     plt.hlines(df_predict_hyb_am['Yield'].mean(), df_hybrid_am_test[feature].min(), df_hybrid_am_test[feature].max(), color = 'k')
+# #     plt.scatter(df_clim_extrapolated, df_y_extrapolated, alpha = 0.8)
+# #     # plt.legend(loc="upper right")
+# #     plt.title(f'Scatterplot of {feature} for GCM-RCPs')
+# #     plt.ylabel('Yield')
+# #     if feature in ['tnx_3','tnx_4','tnx_5']:
+# #         x_label = 'Temperature (°C)'
+# #     elif feature in ['prcptot_3', 'prcptot_4', 'prcptot_5']:
+# #         x_label = 'Precipitation (mm/month)'
+# #     else:
+# #         x_label = 'Yield (ton/ha)'
+          
+# #     plt.xlabel(x_label)
+# #     plt.show()
     
 
-#%% Partial dependence plots
-from sklearn.inspection import PartialDependenceDisplay
+# #%% Partial dependence plots
+# from sklearn.inspection import PartialDependenceDisplay
 
-features_to_plot = ['yield-soy-noirr','txm_3']
-fig, ax1 = plt.subplots(1, 1, figsize=(10, 8), dpi=500)
-disp1 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_proj_fut, features_to_plot, pd_line_kw={'color':'r'},percentiles=(0.01,0.99), ax = ax1)
-disp2 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_hybrid_am_test, features_to_plot, ax = disp1.axes_,percentiles=(0,1), pd_line_kw={'color':'k'})
-plt.setp(disp1.deciles_vlines_, visible=False)
-plt.setp(disp2.deciles_vlines_, visible=False)
-plt.show()
+# features_to_plot = ['yield-soy-noirr','txm_3']
+# fig, ax1 = plt.subplots(1, 1, figsize=(10, 8), dpi=500)
+# disp1 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_proj_fut, features_to_plot, pd_line_kw={'color':'r'},percentiles=(0.01,0.99), ax = ax1)
+# disp2 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_hybrid_am_test, features_to_plot, ax = disp1.axes_,percentiles=(0,1), pd_line_kw={'color':'k'})
+# plt.setp(disp1.deciles_vlines_, visible=False)
+# plt.setp(disp2.deciles_vlines_, visible=False)
+# plt.show()
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 8))
-disp1.plot(ax=[ax1, ax2], line_kw={"label": "Extrapolation", "color": "red"})
-disp2.plot(ax=[ax1, ax2], line_kw={"label": "Training", "color": "black"})
-ax1.set_ylim(1.0, 2.8)
-ax2.set_ylim(1.0, 2.8)
-plt.setp(disp1.deciles_vlines_, visible=False)
-plt.setp(disp2.deciles_vlines_, visible=False)
-ax1.legend()
-plt.show()
+# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 8))
+# disp1.plot(ax=[ax1, ax2], line_kw={"label": "Extrapolation", "color": "red"})
+# disp2.plot(ax=[ax1, ax2], line_kw={"label": "Training", "color": "black"})
+# ax1.set_ylim(1.0, 2.8)
+# ax2.set_ylim(1.0, 2.8)
+# plt.setp(disp1.deciles_vlines_, visible=False)
+# plt.setp(disp2.deciles_vlines_, visible=False)
+# ax1.legend()
+# plt.show()
 
-features_to_plot = [1,2,3]
-fig, ax1 = plt.subplots(1, 1, figsize=(10, 8), dpi=500)
-disp3 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_proj_fut, features_to_plot, pd_line_kw={'color':'r'},percentiles=(0.01,0.99), ax = ax1)
-disp4 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_hybrid_am_test, features_to_plot, ax = disp3.axes_,percentiles=(0,1), pd_line_kw={'color':'k'})
-plt.ylim(0, 2.6)
-plt.setp(disp3.deciles_vlines_, visible=False)
-plt.setp(disp4.deciles_vlines_, visible=False)
+# features_to_plot = [1,2,3]
+# fig, ax1 = plt.subplots(1, 1, figsize=(10, 8), dpi=500)
+# disp3 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_proj_fut, features_to_plot, pd_line_kw={'color':'r'},percentiles=(0.01,0.99), ax = ax1)
+# disp4 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_hybrid_am_test, features_to_plot, ax = disp3.axes_,percentiles=(0,1), pd_line_kw={'color':'k'})
+# plt.ylim(0, 2.6)
+# plt.setp(disp3.deciles_vlines_, visible=False)
+# plt.setp(disp4.deciles_vlines_, visible=False)
 
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 8))
-disp3.plot(ax=[ax1, ax2, ax3], line_kw={"label": "Extrapolation", "color": "red"})
-disp4.plot(
-    ax=[ax1, ax2, ax3], line_kw={"label": "Training", "color": "black"}
-)
-ax1.set_ylim(1, 2.8)
-ax2.set_ylim(1, 2.8)
-ax3.set_ylim(1, 2.8)
-plt.setp(disp3.deciles_vlines_, visible=False)
-plt.setp(disp4.deciles_vlines_, visible=False)
-ax1.legend()
-plt.show()
+# fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 8))
+# disp3.plot(ax=[ax1, ax2, ax3], line_kw={"label": "Extrapolation", "color": "red"})
+# disp4.plot(
+#     ax=[ax1, ax2, ax3], line_kw={"label": "Training", "color": "black"}
+# )
+# ax1.set_ylim(1, 2.8)
+# ax2.set_ylim(1, 2.8)
+# ax3.set_ylim(1, 2.8)
+# plt.setp(disp3.deciles_vlines_, visible=False)
+# plt.setp(disp4.deciles_vlines_, visible=False)
+# ax1.legend()
+# plt.show()
 
-features_to_plot = [4,5,6]
-fig, ax1 = plt.subplots(1, 1, figsize=(10, 8), dpi=500)
-disp5 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_proj_fut, features_to_plot, pd_line_kw={'color':'r'},percentiles=(0.01,0.99), ax = ax1, method = 'brute')
-disp6 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_hybrid_am_test, features_to_plot, ax = disp5.axes_,percentiles=(0,1), pd_line_kw={'color':'k'}, method = 'brute')
-plt.ylim(0, 2.6)
-plt.setp(disp5.deciles_vlines_, visible=False)
-plt.setp(disp6.deciles_vlines_, visible=False)
+# features_to_plot = [4,5,6]
+# fig, ax1 = plt.subplots(1, 1, figsize=(10, 8), dpi=500)
+# disp5 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_proj_fut, features_to_plot, pd_line_kw={'color':'r'},percentiles=(0.01,0.99), ax = ax1, method = 'brute')
+# disp6 = PartialDependenceDisplay.from_estimator(model_to_be_used, df_hybrid_am_test, features_to_plot, ax = disp5.axes_,percentiles=(0,1), pd_line_kw={'color':'k'}, method = 'brute')
+# plt.ylim(0, 2.6)
+# plt.setp(disp5.deciles_vlines_, visible=False)
+# plt.setp(disp6.deciles_vlines_, visible=False)
 
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 8))
-disp5.plot(ax=[ax1, ax2, ax3], line_kw={"label": "Extrapolation", "color": "red"})
-disp6.plot(
-    ax=[ax1, ax2, ax3], line_kw={"label": "Training", "color": "black"}
-)
-ax1.set_ylim(1, 2.8)
-ax2.set_ylim(1, 2.8)
-ax3.set_ylim(1, 2.8)
-plt.setp(disp5.deciles_vlines_, visible=False)
-plt.setp(disp6.deciles_vlines_, visible=False)
-ax1.legend()
-plt.show()
+# fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 8))
+# disp5.plot(ax=[ax1, ax2, ax3], line_kw={"label": "Extrapolation", "color": "red"})
+# disp6.plot(
+#     ax=[ax1, ax2, ax3], line_kw={"label": "Training", "color": "black"}
+# )
+# ax1.set_ylim(1, 2.8)
+# ax2.set_ylim(1, 2.8)
+# ax3.set_ylim(1, 2.8)
+# plt.setp(disp5.deciles_vlines_, visible=False)
+# plt.setp(disp6.deciles_vlines_, visible=False)
+# ax1.legend()
+# plt.show()
 
-#%%
-mean_stuff = df_proj_fut['prcptot_4'].groupby(['lat','lon']).mean().to_xarray()
-stuff_2088 = df_proj_fut['prcptot_4'].loc[2088].groupby(['lat','lon']).mean().to_xarray()
-delta = stuff_2088 - mean_stuff
-delta.plot()
-# test_values = df_hybrid_am_test.iloc[[0],:-1].copy()
-# test_values.iloc[[0],:] = [0,0,0,0,50,50,50]
-# test_prdict = full_model_hyb.predict(test_values)
-# print(test_prdict)
+# #%%
+# mean_stuff = df_proj_fut['prcptot_4'].groupby(['lat','lon']).mean().to_xarray()
+# stuff_2088 = df_proj_fut['prcptot_4'].loc[2088].groupby(['lat','lon']).mean().to_xarray()
+# delta = stuff_2088 - mean_stuff
+# delta.plot()
+# # test_values = df_hybrid_am_test.iloc[[0],:-1].copy()
+# # test_values.iloc[[0],:] = [0,0,0,0,50,50,50]
+# # test_prdict = full_model_hyb.predict(test_values)
+# # print(test_prdict)
 
-DS_test = xr.open_mfdataset('monthly_ukesm_ssp585_am/txm_MON_climpact.ukesm1-0-ll_r1i1p1f2_w5e5_ssp5-ssp5.nc').where(DS_y_epic_am_det.mean('time') >= -5.0)
+# DS_test = xr.open_mfdataset('monthly_ukesm_ssp585_am/txm_MON_climpact.ukesm1-0-ll_r1i1p1f2_w5e5_ssp5-ssp5.nc').where(DS_y_epic_am_det_regul.mean('time') >= -5.0)
 
-# txm 2 is peaking one year after txm_4
-DS_test['txm'].mean(['lat','lon']).plot()
-DS_test['txm'].sel(time = slice('2030-01-16','2040-10-16')).mean(['lat','lon']).plot()
-DS_test['txm'].sel(time = slice('2037-01-01','2037-01-30')).mean(['lat','lon']).values  
-DS_test['txm'].sel(time = slice('2036-11-01','2037-03-30')).mean(['lat','lon']).values  
+# # txm 2 is peaking one year after txm_4
+# DS_test['txm'].mean(['lat','lon']).plot()
+# DS_test['txm'].sel(time = slice('2030-01-16','2040-10-16')).mean(['lat','lon']).plot()
+# DS_test['txm'].sel(time = slice('2037-01-01','2037-01-30')).mean(['lat','lon']).values  
+# DS_test['txm'].sel(time = slice('2036-11-01','2037-03-30')).mean(['lat','lon']).values  
 
-DS_test['txm'].sel(time = slice('2034-11-01','2035-03-30')).mean(['lat','lon']).values 
-DS_test['txm'].sel(time = slice('2035-11-01','2036-03-30')).mean(['lat','lon']).values # March SHould be equal to TXM_4 peak
-DS_test['txm'].sel(time = slice('2036-11-01','2037-03-30')).mean(['lat','lon']).values # January SHould be equal to TXM_2 peak
+# DS_test['txm'].sel(time = slice('2034-11-01','2035-03-30')).mean(['lat','lon']).values 
+# DS_test['txm'].sel(time = slice('2035-11-01','2036-03-30')).mean(['lat','lon']).values # March SHould be equal to TXM_4 peak
+# DS_test['txm'].sel(time = slice('2036-11-01','2037-03-30')).mean(['lat','lon']).values # January SHould be equal to TXM_2 peak
 
-df_test = DS_test['txm'].mean(['lat','lon']).to_dataframe()
-df_test
+# df_test = DS_test['txm'].mean(['lat','lon']).to_dataframe()
+# df_test
 
-from statsmodels.tsa.seasonal import seasonal_decompose
-decompose_data = seasonal_decompose(df_test, model="additive", period = 516)
-decompose_data.plot(); 
+# from statsmodels.tsa.seasonal import seasonal_decompose
+# decompose_data = seasonal_decompose(df_test, model="additive", period = 516)
+# decompose_data.plot(); 
 
-decompose_data.seasonal.plot(); 
+# decompose_data.seasonal.plot(); 
 
-from statsmodels.graphics.tsaplots import plot_acf
-plot_acf(df_test); 
+# from statsmodels.graphics.tsaplots import plot_acf
+# plot_acf(df_test); 
 
-plt.figure(figsize=(10,6))
-plt.show()
+# plt.figure(figsize=(10,6))
+# plt.show()
 
-DS_test['txm'].sel(time = '2100-12-16').mean(['time']).plot()
-
-
-DS_test2 = xr.open_mfdataset('epic-iiasa_ukesm1-0-ll_w5e5_ssp585_2015soc_2015co2_yield-soy-noirr_global_annual_2015_2100.nc', decode_times= False)
-DS_test2 = DS_test2.where(DS_y_epic_am_det.mean('time') >= -5.0)
+# DS_test['txm'].sel(time = '2100-12-16').mean(['time']).plot()
 
 
-DS_test2['yield-soy-noirr'].sel(time = 438).plot()
-plot_2d_am_map(DS_test2['yield-soy-noirr'].sel(time = 438))
-#%%
+# DS_test2 = xr.open_mfdataset('epic-iiasa_ukesm1-0-ll_w5e5_ssp585_2015soc_2015co2_yield-soy-noirr_global_annual_2015_2100.nc', decode_times= False)
+# DS_test2 = DS_test2.where(DS_y_epic_am_det.mean('time') >= -5.0)
+
+
+# DS_test2['yield-soy-noirr'].sel(time = 438).plot()
+# plot_2d_am_map(DS_test2['yield-soy-noirr'].sel(time = 438))
+# #%%
 
 
 
